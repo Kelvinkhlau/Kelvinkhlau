@@ -85,14 +85,19 @@ sync_gmail_inbox() → 對每封新 email：
 ### Week 3：Auth ✅ 完成
 - [x] WebAuthn / Passkey 註冊 + login
 - [x] JWT issue
-- [ ] Protected routes（middleware — 留喺下階段）
-- [ ] JWT refresh
+- [x] Protected routes（`current_user` dependency，`/api/emails/*` 全部 gated）
+- [x] WebSocket token auth（`?token=<jwt>` query string）
+- [ ] JWT refresh（留到 Phase 1）
 
-### Week 4：穩定 + 部署
-- [ ] 錯誤處理 + retry
-- [ ] launchd / Caddy / Tailscale 設置
-- [ ] iPhone PWA 安裝測試
-- [ ] 每日備份 cron
+### Week 4：穩定 + 部署 ✅ 完成
+- [x] Email 列表 stats + mark-read + pagination
+- [x] 分類「建議」chip（confidence < 0.85 顯示淡色 italic）
+- [x] 錯誤處理 + retry（Gmail / Claude API exponential backoff）
+- [x] launchd plist + `install-launchd.sh`
+- [x] Caddyfile（reverse proxy + WebSocket + security headers）
+- [x] Tailscale 設置文檔
+- [x] 每日備份：`scripts/backup.sh` + `com.kelvin.lifeos.backup.plist`
+- [x] 完整 Mac mini 部署指南 `docs/setup-mac-mini.md`
 
 ## 驗收標準
 

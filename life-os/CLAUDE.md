@@ -76,16 +76,19 @@ cd frontend && pnpm test
 
 ## MVP 進度（Email 智能助手）
 
-- [ ] Repo scaffold
-- [ ] FastAPI hello world
-- [ ] SQLAlchemy + Alembic 初始 migration
-- [ ] Next.js + Tailwind scaffold
-- [ ] Gmail OAuth2 flow
-- [ ] Background email sync (APScheduler)
-- [ ] Email list / detail UI
-- [ ] Claude AI 分類
-- [ ] WebAuthn / Passkey 登入
-- [ ] Mac mini 部署 (launchd + Caddy + Tailscale)
+- [x] Repo scaffold
+- [x] FastAPI hello world
+- [x] SQLAlchemy + Alembic 初始 migration
+- [x] Next.js + Tailwind scaffold
+- [x] Gmail OAuth2 flow
+- [x] Background email sync (APScheduler)
+- [x] Email list / detail UI + search + pagination
+- [x] Claude AI 分類 + 「建議」chip
+- [x] WebAuthn / Passkey 登入 + JWT 保護
+- [x] WebSocket real-time push
+- [x] Todo module（bonus）
+- [x] Daily backup（launchd plist）
+- [x] Mac mini 部署 (launchd + Caddy + Tailscale) 文檔
 
 ## 完整計劃
 
