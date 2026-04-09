@@ -23,9 +23,29 @@ err()   { color "1;31" "✗ $*" >&2; }
 # ─── 1. 搵 OAuth JSON ───────────────────────────────────────────
 JSON="${1:-}"
 if [[ -z "$JSON" ]]; then
-  info "喺 ~/Downloads/ 搵 client_secret_*.json..."
-  # 最新嗰個
-  JSON=$(ls -t "$HOME/Downloads"/client_secret_*.json 2>/dev/null | head -1 || true)
+  info "喺 ~/Downloads/ 搵 Google OAuth client JSON..."
+  # 試多個 pattern（macOS bash 3.2 glob 有時唔 work）：
+  #   client_secret_*.json  — Google 默認命名
+  #   *googleusercontent.com.json  — 保險
+  #   *client_secret*.json  — rename 過都捉到
+  shopt -s nullglob 2>/dev/null || true
+  candidates=(
+    "$HOME/Downloads"/client_secret_*.json
+    "$HOME/Downloads"/*googleusercontent.com.json
+    "$HOME/Downloads"/*client_secret*.json
+  )
+  # 揀最新嗰個
+  latest=""
+  latest_mtime=0
+  for f in "${candidates[@]}"; do
+    [[ -f "$f" ]] || continue
+    mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+    if (( mtime > latest_mtime )); then
+      latest_mtime=$mtime
+      latest="$f"
+    fi
+  done
+  JSON="$latest"
 fi
 
 if [[ -z "$JSON" || ! -f "$JSON" ]]; then
