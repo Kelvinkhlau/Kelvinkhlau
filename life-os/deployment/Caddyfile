@@ -1,0 +1,29 @@
+# Caddy reverse proxy for life-os
+# 用 Tailscale 嘅 hostname，自動 HTTPS（Tailscale 提供 cert）
+
+# 將 lifeos 換成你 Mac mini 嘅 Tailscale hostname
+lifeos.your-tailnet.ts.net {
+    # FastAPI backend
+    reverse_proxy 127.0.0.1:8000
+
+    # Logging
+    log {
+        output file /var/log/caddy/lifeos.access.log
+        format json
+    }
+
+    # 安全 headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+    }
+
+    # WebSocket（emails real-time push）
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    reverse_proxy @websocket 127.0.0.1:8000
+}
