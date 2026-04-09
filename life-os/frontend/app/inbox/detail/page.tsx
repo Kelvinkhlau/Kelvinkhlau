@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, type EmailDetail } from "@/lib/api";
 
 const CATEGORIES = [
@@ -11,9 +11,9 @@ const CATEGORIES = [
   { value: "promotional", label: "廣告" },
 ];
 
-export default function EmailDetailPage() {
-  const params = useParams<{ id: string }>();
-  const id = Number(params.id);
+function EmailDetailContent() {
+  const searchParams = useSearchParams();
+  const id = Number(searchParams.get("id"));
 
   const [email, setEmail] = useState<EmailDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +22,7 @@ export default function EmailDetailPage() {
   const [currentCategory, setCurrentCategory] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!Number.isFinite(id)) {
+    if (!Number.isFinite(id) || id <= 0) {
       setError("無效 email id");
       setLoading(false);
       return;
@@ -132,5 +132,13 @@ export default function EmailDetailPage() {
         </section>
       </article>
     </main>
+  );
+}
+
+export default function EmailDetailPage() {
+  return (
+    <Suspense fallback={<main className="p-8">載入中…</main>}>
+      <EmailDetailContent />
+    </Suspense>
   );
 }

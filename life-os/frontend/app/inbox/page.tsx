@@ -237,7 +237,7 @@ export default function InboxPage() {
                 key={email.id}
                 className={`hover:bg-muted ${email.is_read ? "opacity-60" : ""}`}
               >
-                <Link href={`/inbox/${email.id}`} className="block p-4">
+                <Link href={`/inbox/detail?id=${email.id}`} className="block p-4">
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
                       <div
