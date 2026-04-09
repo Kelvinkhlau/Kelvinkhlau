@@ -57,6 +57,18 @@ export type SyncResult = {
   errors: string[];
 };
 
+export type EmailStats = {
+  total: number;
+  unread: number;
+  today_new: number;
+  by_category: Record<string, number>;
+};
+
+export type EmailListResponse = {
+  items: Email[];
+  total: number;
+};
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -84,7 +96,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init?.headers as Record<string, string>) ?? {}),
@@ -109,6 +121,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, `${res.status} ${detail}`);
   }
+  return res;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await rawFetch(path, init);
   return res.json();
 }
 
@@ -116,21 +133,32 @@ export const api = {
   health: () => request<{ status: string; env: string }>("/health"),
 
   // Emails
-  listEmails: (params?: {
+  listEmails: async (params?: {
     category?: string;
     q?: string;
+    unread_only?: boolean;
     limit?: number;
     offset?: number;
-  }) => {
+  }): Promise<EmailListResponse> => {
     const qs = new URLSearchParams();
     if (params?.category) qs.set("category", params.category);
     if (params?.q) qs.set("q", params.q);
+    if (params?.unread_only) qs.set("unread_only", "true");
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const suffix = qs.toString() ? `?${qs}` : "";
-    return request<Email[]>(`/emails${suffix}`);
+    const res = await rawFetch(`/emails${suffix}`);
+    const items = (await res.json()) as Email[];
+    const total = Number(res.headers.get("X-Total-Count") ?? items.length);
+    return { items, total };
   },
   getEmail: (id: number) => request<EmailDetail>(`/emails/${id}`),
+  markRead: (id: number, read = true) =>
+    request<{ ok: boolean; is_read: boolean }>(
+      `/emails/${id}/read?read=${read}`,
+      { method: "PUT" },
+    ),
+  emailStats: () => request<EmailStats>("/emails/stats"),
   updateCategory: (id: number, category: string) =>
     request<{ ok: boolean; final_category: string }>(`/emails/${id}/category`, {
       method: "PUT",

@@ -11,13 +11,58 @@ const CATEGORIES = [
   { value: "promotional", label: "廣告" },
 ];
 
+const PAGE_SIZE = 50;
+
+const CATEGORY_LABEL: Record<string, string> = {
+  important: "重要",
+  normal: "一般",
+  promotional: "廣告",
+  unclassified: "未分類",
+};
+
+function classificationChip(email: Email) {
+  if (!email.classification) return null;
+  const cat = email.classification.final_category;
+  const conf = email.classification.ai_confidence;
+  const userOverridden = !!email.classification.user_category;
+  const isSuggestion = !userOverridden && conf < 0.85;
+
+  const color =
+    cat === "important"
+      ? "bg-red-50 text-red-700 border-red-200"
+      : cat === "promotional"
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-slate-50 text-slate-700 border-slate-200";
+
+  return (
+    <span
+      className={`ml-2 text-xs px-2 py-1 rounded border whitespace-nowrap ${color} ${
+        isSuggestion ? "opacity-60 italic" : ""
+      }`}
+      title={
+        isSuggestion
+          ? `AI 建議（信心 ${(conf * 100).toFixed(0)}%）`
+          : userOverridden
+            ? "用戶修正"
+            : `AI 分類（信心 ${(conf * 100).toFixed(0)}%）`
+      }
+    >
+      {isSuggestion ? "建議：" : ""}
+      {CATEGORY_LABEL[cat] ?? cat}
+    </span>
+  );
+}
+
 export default function InboxPage() {
   const [emails, setEmails] = useState<Email[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
+  const [page, setPage] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
 
   // Debounce search input
@@ -26,6 +71,11 @@ export default function InboxPage() {
     return () => clearTimeout(t);
   }, [q]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [category, debouncedQ, unreadOnly]);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -33,13 +83,19 @@ export default function InboxPage() {
       .listEmails({
         category: category || undefined,
         q: debouncedQ || undefined,
+        unread_only: unreadOnly || undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
       })
-      .then(setEmails)
+      .then((res) => {
+        setEmails(res.items);
+        setTotal(res.total);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [category, debouncedQ]);
+  }, [category, debouncedQ, unreadOnly, page]);
 
-  // WebSocket real-time push —— 新 email 入嚟直接 prepend
+  // WebSocket real-time push —— 新 email 入嚟直接 prepend（只喺第一頁）
   useEffect(() => {
     const base = getWsBase();
     const token = getToken();
@@ -50,7 +106,9 @@ export default function InboxPage() {
 
     const connect = () => {
       try {
-        ws = new WebSocket(`${base}/ws/emails?token=${encodeURIComponent(token)}`);
+        ws = new WebSocket(
+          `${base}/ws/emails?token=${encodeURIComponent(token)}`,
+        );
       } catch {
         return;
       }
@@ -60,12 +118,15 @@ export default function InboxPage() {
           if (msg.type === "email.new" && msg.email) {
             setEmails((prev) => {
               if (prev.some((e) => e.id === msg.email.id)) return prev;
+              // 只喺第一頁先 prepend，避免跨頁亂序
+              if (page !== 0) return prev;
               return [msg.email as Email, ...prev];
             });
+            setTotal((t) => t + 1);
             setLiveCount((n) => n + 1);
           }
         } catch {
-          // ignore malformed
+          // ignore
         }
       };
       ws.onclose = () => {
@@ -83,12 +144,16 @@ export default function InboxPage() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, []);
+  }, [page]);
 
   const resultLabel = useMemo(() => {
     if (loading) return "載入中…";
-    return `共 ${emails.length} 封`;
-  }, [loading, emails.length]);
+    const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
+    const to = Math.min((page + 1) * PAGE_SIZE, total);
+    return `${from}-${to} / ${total}`;
+  }, [loading, total, page]);
+
+  const lastPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
 
   return (
     <main className="min-h-screen p-4 max-w-3xl mx-auto">
@@ -114,7 +179,7 @@ export default function InboxPage() {
           onChange={(e) => setQ(e.target.value)}
           className="w-full px-3 py-2 border border-border rounded-md bg-background"
         />
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           {CATEGORIES.map((c) => (
             <button
               key={c.value}
@@ -128,6 +193,16 @@ export default function InboxPage() {
               {c.label}
             </button>
           ))}
+          <button
+            onClick={() => setUnreadOnly((v) => !v)}
+            className={`text-sm px-3 py-1 rounded-full border ${
+              unreadOnly
+                ? "bg-blue-600 text-white border-blue-600"
+                : "border-border hover:bg-muted"
+            }`}
+          >
+            只睇未讀
+          </button>
           <span className="ml-auto text-xs text-muted-foreground">
             {resultLabel}
           </span>
@@ -142,7 +217,7 @@ export default function InboxPage() {
 
       {!loading && emails.length === 0 ? (
         <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-lg">
-          {debouncedQ || category ? (
+          {debouncedQ || category || unreadOnly ? (
             <>冇符合條件嘅 email。</>
           ) : (
             <>
@@ -155,35 +230,60 @@ export default function InboxPage() {
           )}
         </div>
       ) : (
-        <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-          {emails.map((email) => (
-            <li key={email.id} className="hover:bg-muted">
-              <Link
-                href={`/inbox/${email.id}`}
-                className="block p-4"
+        <>
+          <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+            {emails.map((email) => (
+              <li
+                key={email.id}
+                className={`hover:bg-muted ${email.is_read ? "opacity-60" : ""}`}
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">
-                      {email.subject || "(無主題)"}
+                <Link href={`/inbox/${email.id}`} className="block p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 min-w-0">
+                      <div
+                        className={`truncate ${email.is_read ? "font-normal" : "font-semibold"}`}
+                      >
+                        {!email.is_read && (
+                          <span className="inline-block w-2 h-2 rounded-full bg-blue-600 mr-2 align-middle" />
+                        )}
+                        {email.subject || "(無主題)"}
+                      </div>
+                      <div className="text-sm text-muted-foreground truncate">
+                        {email.sender}
+                      </div>
+                      <div className="text-sm mt-1 line-clamp-2">
+                        {email.snippet}
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground truncate">
-                      {email.sender}
-                    </div>
-                    <div className="text-sm mt-1 line-clamp-2">
-                      {email.snippet}
-                    </div>
+                    {classificationChip(email)}
                   </div>
-                  {email.classification && (
-                    <span className="ml-2 text-xs px-2 py-1 rounded bg-muted whitespace-nowrap">
-                      {email.classification.final_category}
-                    </span>
-                  )}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          {total > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4 text-sm">
+              <button
+                disabled={page === 0 || loading}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="px-3 py-1 border border-border rounded disabled:opacity-40"
+              >
+                ← 上一頁
+              </button>
+              <span className="text-muted-foreground">
+                第 {page + 1} / {lastPage + 1} 頁
+              </span>
+              <button
+                disabled={page >= lastPage || loading}
+                onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                className="px-3 py-1 border border-border rounded disabled:opacity-40"
+              >
+                下一頁 →
+              </button>
+            </div>
+          )}
+        </>
       )}
     </main>
   );

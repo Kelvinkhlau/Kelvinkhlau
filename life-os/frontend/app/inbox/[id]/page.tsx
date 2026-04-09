@@ -32,6 +32,12 @@ export default function EmailDetailPage() {
       .then((e) => {
         setEmail(e);
         setCurrentCategory(e.classification?.final_category ?? null);
+        // Auto mark as read on open
+        if (!e.is_read) {
+          api.markRead(id, true).catch(() => {
+            // 靜默失敗 — 唔影響睇 email
+          });
+        }
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

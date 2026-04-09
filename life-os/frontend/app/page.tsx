@@ -2,18 +2,29 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, getToken, setToken, type GmailStatus } from "@/lib/api";
+import {
+  api,
+  getToken,
+  setToken,
+  type EmailStats,
+  type GmailStatus,
+} from "@/lib/api";
 
 export default function HomePage() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
+  const [stats, setStats] = useState<EmailStats | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
-    setLoggedIn(!!getToken());
+    const hasToken = !!getToken();
+    setLoggedIn(hasToken);
     api.gmailStatus().then(setGmail).catch(() => setGmail({ connected: false }));
+    if (hasToken) {
+      api.emailStats().then(setStats).catch(() => {});
+    }
   }, []);
 
   const handleLogout = () => {
@@ -73,6 +84,34 @@ export default function HomePage() {
           </Link>
         )}
       </header>
+
+      {/* Dashboard stats */}
+      {loggedIn && stats && stats.total > 0 && (
+        <section className="mb-6 grid grid-cols-4 gap-2">
+          <div className="p-3 border border-border rounded-lg text-center">
+            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-xs text-muted-foreground">總數</div>
+          </div>
+          <div className="p-3 border border-border rounded-lg text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {stats.unread}
+            </div>
+            <div className="text-xs text-muted-foreground">未讀</div>
+          </div>
+          <div className="p-3 border border-border rounded-lg text-center">
+            <div className="text-2xl font-bold text-green-600">
+              {stats.today_new}
+            </div>
+            <div className="text-xs text-muted-foreground">今日新</div>
+          </div>
+          <div className="p-3 border border-border rounded-lg text-center">
+            <div className="text-2xl font-bold text-red-600">
+              {stats.by_category.important ?? 0}
+            </div>
+            <div className="text-xs text-muted-foreground">重要</div>
+          </div>
+        </section>
+      )}
 
       {/* Gmail connect card */}
       <section className="mb-6 p-4 border border-border rounded-lg">
