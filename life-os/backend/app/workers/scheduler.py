@@ -11,12 +11,18 @@ def start_scheduler() -> None:
     if scheduler is not None:
         return
 
+    from app.services.email_sync import sync_gmail_inbox
+
     scheduler = BackgroundScheduler(timezone="Asia/Hong_Kong")
-
-    # TODO: 加入 email sync job
-    # from app.services.email_sync import sync_gmail_inbox
-    # scheduler.add_job(sync_gmail_inbox, "interval", minutes=5, id="email_sync")
-
+    scheduler.add_job(
+        sync_gmail_inbox,
+        "interval",
+        minutes=5,
+        id="email_sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
     scheduler.start()
 
 

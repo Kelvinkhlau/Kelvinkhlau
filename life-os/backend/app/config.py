@@ -20,7 +20,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_host: str = "127.0.0.1"
     app_port: int = 8000
-    app_secret_key: str = Field(..., min_length=32)
+    # Production 時必須 override（至少 32 char）
+    app_secret_key: str = Field(
+        default="dev-insecure-secret-key-change-in-production-32",
+        min_length=32,
+    )
 
     # Database
     database_url: str = "sqlite:///./data/lifeos.db"
@@ -43,8 +47,10 @@ class Settings(BaseSettings):
     owner_email: str = "owner@example.com"
     owner_name: str = "Owner"
 
-    # 公開 URL（部署時用）
+    # Backend 公開 URL（部署時係 Tailscale URL）
     public_base_url: str = "http://localhost:8000"
+    # Frontend URL（開發時係 :3000，部署時同 public_base_url 一樣）
+    frontend_url: str = "http://localhost:3000"
 
     @property
     def is_production(self) -> bool:

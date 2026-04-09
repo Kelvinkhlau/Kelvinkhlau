@@ -1,18 +1,147 @@
-"""背景 Email sync — MVP Week 2 實作。"""
+"""Email sync service — 拉 Gmail 郵件入本地 SQLite，並 trigger AI 分類。"""
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db import SessionLocal
+from app.models.email import Email, EmailClassification
+from app.models.user import User
+from app.services import ai_classifier, gmail_client
+from app.services.gmail_client import GmailClient, ParsedMessage
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SyncResult:
+    fetched: int
+    new: int
+    classified: int
+    errors: list[str]
+
+
+def sync_for_user(
+    db: Session,
+    user: User,
+    *,
+    limit: int = 50,
+    use_history: bool = True,
+    classify: bool = True,
+) -> SyncResult:
+    """同步一個 user 嘅 Gmail inbox。
+
+    - `limit`：fallback 模式嘅最大封數（冇 history_id 時）
+    - `use_history`：用 Gmail History API 做 incremental sync（如果有 history_id）
+    - `classify`：每封新 email 係咪 call Claude 分類
+    """
+    if not user.gmail_refresh_token:
+        return SyncResult(fetched=0, new=0, classified=0, errors=["User not connected to Gmail"])
+
+    client = GmailClient(refresh_token=user.gmail_refresh_token)
+    errors: list[str] = []
+
+    # 決定要 fetch 邊啲 message IDs
+    if use_history and user.gmail_history_id:
+        message_ids = client.get_history_since(user.gmail_history_id)
+    else:
+        message_ids = client.list_recent_message_ids(max_results=limit)
+
+    new_count = 0
+    classified_count = 0
+
+    for msg_id in message_ids:
+        # 避免重複寫
+        existing = db.execute(
+            select(Email).where(Email.gmail_message_id == msg_id)
+        ).scalar_one_or_none()
+        if existing is not None:
+            continue
+
+        try:
+            parsed: ParsedMessage = client.get_message(msg_id)
+        except Exception as e:
+            errors.append(f"get_message {msg_id}: {e}")
+            continue
+
+        email = Email(
+            user_id=user.id,
+            gmail_message_id=parsed.gmail_message_id,
+            gmail_thread_id=parsed.gmail_thread_id,
+            subject=parsed.subject,
+            sender=parsed.sender,
+            sender_email=parsed.sender_email,
+            recipients=parsed.recipients,
+            snippet=parsed.snippet,
+            body_text=parsed.body_text,
+            body_html=parsed.body_html,
+            received_at=parsed.received_at,
+            has_attachment=parsed.has_attachment,
+        )
+        db.add(email)
+        db.flush()  # 攞返 email.id
+        new_count += 1
+
+        # AI 分類
+        if classify:
+            try:
+                result = ai_classifier.classify_email(
+                    subject=parsed.subject,
+                    sender=parsed.sender,
+                    snippet=parsed.snippet or parsed.body_text[:500],
+                )
+                classification = EmailClassification(
+                    email_id=email.id,
+                    ai_category=result.category,
+                    ai_confidence=result.confidence,
+                    ai_reason=result.reason,
+                    ai_model=result.model,
+                )
+                db.add(classification)
+                classified_count += 1
+            except Exception as e:
+                errors.append(f"classify {msg_id}: {e}")
+                logger.exception("classify failed for %s", msg_id)
+
+    # Update history_id
+    try:
+        user.gmail_history_id = client.get_profile_history_id()
+    except Exception as e:
+        errors.append(f"get_profile_history_id: {e}")
+
+    db.commit()
+
+    return SyncResult(
+        fetched=len(message_ids),
+        new=new_count,
+        classified=classified_count,
+        errors=errors,
+    )
+
 
 def sync_gmail_inbox() -> None:
-    """每 5 分鐘 call 一次：攞 Gmail 新郵件，存入本地 SQLite，跟住 trigger AI 分類。
-
-    流程：
-    1. 攞 user.gmail_history_id
-    2. call GmailClient.get_history_since() 攞新 message IDs
-    3. 對每個 ID call GmailClient.get_message() 攞內容
-    4. 寫入 Email table
-    5. 對每封新郵件 call ai_classifier.classify() 寫 EmailClassification
-    6. WebSocket push 通知前端
-    7. update user.gmail_history_id
-    """
-    raise NotImplementedError("MVP Week 2")
+    """APScheduler 每 5 分鐘 call — 同步所有 users（單用戶系統通常只有一個）。"""
+    db = SessionLocal()
+    try:
+        users = db.execute(
+            select(User).where(User.gmail_refresh_token.is_not(None))
+        ).scalars().all()
+        for user in users:
+            try:
+                result = sync_for_user(db, user, limit=50, use_history=True)
+                logger.info(
+                    "Synced user %s: fetched=%d new=%d classified=%d errors=%d",
+                    user.email,
+                    result.fetched,
+                    result.new,
+                    result.classified,
+                    len(result.errors),
+                )
+            except Exception:
+                logger.exception("Background sync failed for user %s", user.email)
+    finally:
+        db.close()

@@ -60,28 +60,32 @@ sync_gmail_inbox() → 對每封新 email：
 
 ## 開發 milestones
 
-### Week 1：基礎
+### Week 1：基礎 ✅ 完成
 - [x] Repo scaffold
 - [x] FastAPI hello world
 - [x] SQLAlchemy + Alembic 設置
 - [x] Email models
 - [x] Next.js + Tailwind scaffold
 - [x] Inbox page UI
-- [ ] Alembic 第一個 migration（生成 tables）
-- [ ] Gmail OAuth2 flow（authorize + callback）
-- [ ] 手動 fetch 100 封郵件 → 入 db
+- [x] Alembic 第一個 migration（生成 tables）
+- [x] Gmail OAuth2 flow（authorize + callback）
+- [x] 手動 sync endpoint `POST /api/emails/sync`
+- [x] Frontend 「連接 Gmail」按鈕 + callback page
 
-### Week 2：背景同步
-- [ ] APScheduler job
-- [ ] Gmail History API（incremental sync）
-- [ ] WebSocket endpoint 同 frontend connect
-- [ ] Search / filter
+### Week 2：背景同步 ✅ 部分完成
+- [x] APScheduler job（每 5 min）
+- [x] Gmail History API（incremental sync）
+- [x] `GmailClient` + `email_sync.sync_for_user()`
+- [x] AI classifier（Claude haiku）
+- [x] Category filter（`?category=important`）
+- [ ] WebSocket endpoint 同 frontend connect（real-time push）
+- [ ] Inbox search / 全文搜尋
+- [ ] Email detail page
 
-### Week 3：AI 分類 + Auth
-- [ ] `classify_email()` 完整實作
-- [ ] 用戶 override API
+### Week 3：Auth
 - [ ] WebAuthn / Passkey 註冊 + login
 - [ ] JWT issue / refresh
+- [ ] Protected routes
 
 ### Week 4：穩定 + 部署
 - [ ] 錯誤處理 + retry
