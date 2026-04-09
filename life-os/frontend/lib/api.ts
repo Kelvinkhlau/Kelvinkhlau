@@ -7,6 +7,19 @@
 
 const BASE = "/api";
 
+/**
+ * WebSocket base URL。
+ * - 開發時：Next.js rewrites 唔 proxy WebSocket，所以直駁 backend（:8000）。
+ * - 部署時：同 origin，用 `location.host`。
+ */
+export function getWsBase(): string {
+  if (typeof window === "undefined") return "";
+  const isDev = process.env.NODE_ENV === "development";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = isDev ? "localhost:8000" : window.location.host;
+  return `${proto}//${host}`;
+}
+
 export type EmailClassification = {
   ai_category: string;
   ai_confidence: number;
@@ -44,13 +57,34 @@ export type SyncResult = {
   errors: string[];
 };
 
+// JWT token storage（localStorage — MVP 夠用）
+const TOKEN_KEY = "lifeos.token";
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    window.localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
     credentials: "include",
   });
   if (!res.ok) {
@@ -64,9 +98,15 @@ export const api = {
   health: () => request<{ status: string; env: string }>("/health"),
 
   // Emails
-  listEmails: (params?: { category?: string; limit?: number; offset?: number }) => {
+  listEmails: (params?: {
+    category?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.category) qs.set("category", params.category);
+    if (params?.q) qs.set("q", params.q);
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const suffix = qs.toString() ? `?${qs}` : "";
@@ -90,4 +130,30 @@ export const api = {
   gmailStatus: () => request<GmailStatus>("/auth/gmail/status"),
   gmailAuthorize: () =>
     request<{ authorization_url: string; state: string }>("/auth/gmail/authorize"),
+
+  // Passkey
+  passkeyRegisterStart: () =>
+    request<{ challenge_token: string; options: PublicKeyCredentialCreationOptionsJSON }>(
+      "/auth/passkey/register/start",
+      { method: "POST" }
+    ),
+  passkeyRegisterFinish: (challenge_token: string, credential: unknown) =>
+    request<{ ok: boolean; token: string; user: { email: string; name: string } }>(
+      "/auth/passkey/register/finish",
+      { method: "POST", body: JSON.stringify({ challenge_token, credential }) }
+    ),
+  passkeyLoginStart: () =>
+    request<{ challenge_token: string; options: PublicKeyCredentialRequestOptionsJSON }>(
+      "/auth/passkey/login/start",
+      { method: "POST" }
+    ),
+  passkeyLoginFinish: (challenge_token: string, credential: unknown) =>
+    request<{ ok: boolean; token: string; user: { email: string; name: string } }>(
+      "/auth/passkey/login/finish",
+      { method: "POST", body: JSON.stringify({ challenge_token, credential }) }
+    ),
 };
+
+// Minimal types for WebAuthn options — browser 會直接用原始 JSON
+export type PublicKeyCredentialCreationOptionsJSON = Record<string, unknown>;
+export type PublicKeyCredentialRequestOptionsJSON = Record<string, unknown>;

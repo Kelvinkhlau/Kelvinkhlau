@@ -13,6 +13,7 @@ from app.models.email import Email, EmailClassification
 from app.models.user import User
 from app.services import ai_classifier, gmail_client
 from app.services.gmail_client import GmailClient, ParsedMessage
+from app.services.ws_manager import manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def sync_for_user(
 
     new_count = 0
     classified_count = 0
+    new_emails: list[Email] = []
 
     for msg_id in message_ids:
         # 避免重複寫
@@ -85,6 +87,7 @@ def sync_for_user(
         db.add(email)
         db.flush()  # 攞返 email.id
         new_count += 1
+        new_emails.append(email)
 
         # AI 分類
         if classify:
@@ -114,6 +117,47 @@ def sync_for_user(
         errors.append(f"get_profile_history_id: {e}")
 
     db.commit()
+
+    # Broadcast 新 email 事件俾連住嘅 WS clients
+    for email in new_emails:
+        try:
+            db.refresh(email)
+            payload = {
+                "type": "email.new",
+                "email": {
+                    "id": email.id,
+                    "subject": email.subject,
+                    "sender": email.sender,
+                    "sender_email": email.sender_email,
+                    "snippet": email.snippet,
+                    "received_at": email.received_at.isoformat()
+                    if email.received_at
+                    else None,
+                    "is_read": email.is_read,
+                    "has_attachment": email.has_attachment,
+                    "classification": {
+                        "ai_category": email.classification.ai_category,
+                        "ai_confidence": email.classification.ai_confidence,
+                        "ai_reason": email.classification.ai_reason,
+                        "user_category": email.classification.user_category,
+                        "final_category": email.classification.final_category,
+                    }
+                    if email.classification
+                    else None,
+                },
+            }
+            ws_manager.broadcast_threadsafe(payload)
+        except Exception:
+            logger.exception("broadcast new email failed")
+
+    if new_count > 0 or classified_count > 0:
+        ws_manager.broadcast_threadsafe(
+            {
+                "type": "sync.done",
+                "new": new_count,
+                "classified": classified_count,
+            }
+        )
 
     return SyncResult(
         fetched=len(message_ids),

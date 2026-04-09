@@ -72,20 +72,21 @@ sync_gmail_inbox() → 對每封新 email：
 - [x] 手動 sync endpoint `POST /api/emails/sync`
 - [x] Frontend 「連接 Gmail」按鈕 + callback page
 
-### Week 2：背景同步 ✅ 部分完成
+### Week 2：背景同步 ✅ 完成
 - [x] APScheduler job（每 5 min）
 - [x] Gmail History API（incremental sync）
 - [x] `GmailClient` + `email_sync.sync_for_user()`
 - [x] AI classifier（Claude haiku）
 - [x] Category filter（`?category=important`）
-- [ ] WebSocket endpoint 同 frontend connect（real-time push）
-- [ ] Inbox search / 全文搜尋
-- [ ] Email detail page
+- [x] WebSocket endpoint 同 frontend connect（real-time push）
+- [x] Inbox search / 全文搜尋（subject / sender / snippet / body）
+- [x] Email detail page
 
-### Week 3：Auth
-- [ ] WebAuthn / Passkey 註冊 + login
-- [ ] JWT issue / refresh
-- [ ] Protected routes
+### Week 3：Auth ✅ 完成
+- [x] WebAuthn / Passkey 註冊 + login
+- [x] JWT issue
+- [ ] Protected routes（middleware — 留喺下階段）
+- [ ] JWT refresh
 
 ### Week 4：穩定 + 部署
 - [ ] 錯誤處理 + retry

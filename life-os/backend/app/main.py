@@ -1,5 +1,6 @@
 """FastAPI 入口。"""
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,8 +8,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, emails
+from app.api import auth, emails, ws
 from app.config import get_settings
+from app.services.ws_manager import manager as ws_manager
 from app.workers.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
@@ -17,6 +19,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """App 啟動 / 關閉時嘅 hook。"""
+    # 綁定主 event loop，俾 background thread broadcast 事件
+    ws_manager.bind_loop(asyncio.get_running_loop())
     # 啟動時：起背景 scheduler
     start_scheduler()
     yield
@@ -44,6 +48,7 @@ if not settings.is_production:
 # API routes
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(emails.router, prefix="/api/emails", tags=["emails"])
+app.include_router(ws.router, prefix="/ws", tags=["ws"])
 
 
 @app.get("/api/health")

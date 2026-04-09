@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.deps import DbSession
@@ -26,23 +26,36 @@ class SyncResponse(BaseModel):
 @router.get("", response_model=list[EmailOut])
 async def list_emails(
     db: DbSession,
-    category: str | None = Query(None),
+    category: str | None = Query(None, description="important / normal / promotional"),
+    q: str | None = Query(None, description="搜尋 subject / sender / snippet / body"),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
 ) -> list[Email]:
-    """列出 emails，可以按類別過濾。"""
+    """列出 emails — 可以按類別過濾同/或全文搜尋。"""
     stmt = (
         select(Email)
         .options(selectinload(Email.classification))
         .order_by(desc(Email.received_at))
-        .limit(limit)
-        .offset(offset)
     )
+
     if category:
         stmt = stmt.join(EmailClassification, EmailClassification.email_id == Email.id).where(
             func.coalesce(EmailClassification.user_category, EmailClassification.ai_category)
             == category
         )
+
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                Email.subject.ilike(pattern),
+                Email.sender.ilike(pattern),
+                Email.snippet.ilike(pattern),
+                Email.body_text.ilike(pattern),
+            )
+        )
+
+    stmt = stmt.limit(limit).offset(offset)
     result = db.execute(stmt).scalars().all()
     return list(result)
 

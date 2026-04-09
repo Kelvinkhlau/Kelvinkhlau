@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     # Frontend URL（開發時係 :3000，部署時同 public_base_url 一樣）
     frontend_url: str = "http://localhost:3000"
 
+    # WebAuthn / Passkey
+    # rp_id 必須係 frontend domain（冇 scheme / port），例如 "localhost" 或 "lifeos.tail-xxx.ts.net"
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "life-os"
+    # JWT
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 30  # 30 日
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"

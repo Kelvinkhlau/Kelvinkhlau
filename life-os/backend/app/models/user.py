@@ -19,9 +19,10 @@ class User(Base):
     gmail_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
     gmail_history_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # WebAuthn / Passkey credential ID
+    # WebAuthn / Passkey credential（base64url 編碼）
     passkey_credential_id: Mapped[str | None] = mapped_column(String, nullable=True)
     passkey_public_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    passkey_sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
