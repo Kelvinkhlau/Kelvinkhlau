@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.email import Email, EmailClassification
 from app.models.user import User
-from app.services import ai_classifier, gmail_client
+from app.services import ai_classifier
 from app.services.gmail_client import GmailClient, ParsedMessage
 from app.services.ws_manager import manager as ws_manager
 

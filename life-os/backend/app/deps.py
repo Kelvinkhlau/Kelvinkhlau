@@ -3,7 +3,6 @@
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db

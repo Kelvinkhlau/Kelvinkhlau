@@ -1,7 +1,7 @@
 """Todo model — Phase 1 第一個 feature（除 Email 之外）。"""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
-class TodoPriority(str, Enum):
+class TodoPriority(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

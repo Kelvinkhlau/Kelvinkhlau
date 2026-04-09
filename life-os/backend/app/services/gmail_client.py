@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parseaddr, parsedate_to_datetime
 from typing import Any
 
@@ -212,13 +212,13 @@ def _parse_message(msg: dict[str, Any]) -> ParsedMessage:
     # Received time — 用 internalDate（epoch ms）或者 Date header
     internal_date = msg.get("internalDate")
     if internal_date:
-        received_at = datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc)
+        received_at = datetime.fromtimestamp(int(internal_date) / 1000, tz=UTC)
     else:
         date_header = headers.get("date", "")
         try:
             received_at = parsedate_to_datetime(date_header)
         except (TypeError, ValueError):
-            received_at = datetime.now(tz=timezone.utc)
+            received_at = datetime.now(tz=UTC)
 
     # Extract body
     body_text, body_html = _extract_body(payload)
@@ -275,9 +275,6 @@ def _has_attachment(payload: dict[str, Any]) -> bool:
     def walk(part: dict[str, Any]) -> bool:
         if part.get("filename"):
             return True
-        for sub in part.get("parts", []) or []:
-            if walk(sub):
-                return True
-        return False
+        return any(walk(sub) for sub in part.get("parts", []) or [])
 
     return walk(payload)

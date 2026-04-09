@@ -1,7 +1,7 @@
 """Email + classification models。"""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import (
     DateTime,
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
-class EmailCategory(str, Enum):
+class EmailCategory(StrEnum):
     IMPORTANT = "important"
     NORMAL = "normal"
     PROMOTIONAL = "promotional"

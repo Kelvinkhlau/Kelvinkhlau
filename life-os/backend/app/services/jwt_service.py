@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import JWTError, jwt
@@ -13,7 +13,7 @@ settings = get_settings()
 
 
 def issue_token(user_id: int, *, extra: dict[str, Any] | None = None) -> str:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "iat": int(now.timestamp()),
