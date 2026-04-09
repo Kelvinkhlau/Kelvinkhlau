@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job — 每日 03:30 備份 life-os SQLite database。
+
+  安裝：
+    cp deployment/com.kelvin.lifeos.backup.plist ~/Library/LaunchAgents/
+    # 編輯 __PROJECT_ROOT__ 變 absolute path
+    launchctl load ~/Library/LaunchAgents/com.kelvin.lifeos.backup.plist
+
+  手動觸發：
+    launchctl start com.kelvin.lifeos.backup
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kelvin.lifeos.backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__PROJECT_ROOT__/scripts/backup.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_ROOT__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <!-- 每日 03:30 跑一次 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- Mac 睡咗 / 當時關機，下次 wake 補跑 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kelvin/Library/Logs/lifeos-backup.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/kelvin/Library/Logs/lifeos-backup.err.log</string>
+</dict>
+</plist>
