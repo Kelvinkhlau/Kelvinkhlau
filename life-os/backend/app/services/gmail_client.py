@@ -18,8 +18,19 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from app.config import get_settings
+from app.utils.retry import retry_call
+
+
+def _gmail_is_transient(exc: BaseException) -> bool:
+    """Gmail API 5xx / 429 / 網絡錯誤要 retry，4xx（auth / not found）唔 retry。"""
+    if isinstance(exc, HttpError):
+        status = getattr(exc.resp, "status", 0) or 0
+        return status == 429 or status >= 500
+    # 網絡 / SSL / timeout —— retry
+    return True
 
 # Gmail API scopes — 只讀取
 SCOPES = [
@@ -123,24 +134,33 @@ class GmailClient:
 
     def list_recent_message_ids(self, max_results: int = 50) -> list[str]:
         """攞最近 N 封 inbox 郵件嘅 message IDs。"""
-        resp = (
-            self.service.users()
+        resp = retry_call(
+            lambda: self.service.users()
             .messages()
             .list(userId="me", maxResults=max_results, labelIds=["INBOX"])
-            .execute()
+            .execute(),
+            should_retry=_gmail_is_transient,
+            label="gmail.messages.list",
         )
         return [m["id"] for m in resp.get("messages", [])]
 
     def get_profile_history_id(self) -> str:
         """攞 account 當前 historyId（用嚟 incremental sync）。"""
-        profile = self.service.users().getProfile(userId="me").execute()
+        profile = retry_call(
+            lambda: self.service.users().getProfile(userId="me").execute(),
+            should_retry=_gmail_is_transient,
+            label="gmail.getProfile",
+        )
         return str(profile.get("historyId", ""))
 
     def get_history_since(self, history_id: str) -> list[str]:
-        """Incremental sync — 攞由 history_id 之後新增嘅 message IDs。"""
+        """Incremental sync — 攞由 history_id 之後新增嘅 message IDs。
+
+        history_id 過期（404 / 410）會 fallback 去拉最近 50 封。
+        """
         try:
-            resp = (
-                self.service.users()
+            resp = retry_call(
+                lambda: self.service.users()
                 .history()
                 .list(
                     userId="me",
@@ -148,11 +168,15 @@ class GmailClient:
                     historyTypes=["messageAdded"],
                     labelId="INBOX",
                 )
-                .execute()
+                .execute(),
+                should_retry=_gmail_is_transient,
+                label="gmail.history.list",
             )
-        except Exception:
-            # history_id 過期會 error，fallback 拉最近 50 封
-            return self.list_recent_message_ids(max_results=50)
+        except HttpError as e:
+            status = getattr(e.resp, "status", 0) or 0
+            if status in (404, 410):
+                return self.list_recent_message_ids(max_results=50)
+            raise
 
         new_ids: list[str] = []
         for entry in resp.get("history", []):
@@ -164,11 +188,13 @@ class GmailClient:
 
     def get_message(self, message_id: str) -> ParsedMessage:
         """攞單封郵件全部內容，parse 成 ParsedMessage。"""
-        msg = (
-            self.service.users()
+        msg = retry_call(
+            lambda: self.service.users()
             .messages()
             .get(userId="me", id=message_id, format="full")
-            .execute()
+            .execute(),
+            should_retry=_gmail_is_transient,
+            label=f"gmail.messages.get({message_id})",
         )
         return _parse_message(msg)
 

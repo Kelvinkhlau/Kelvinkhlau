@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { api, getWsBase, type Email } from "@/lib/api";
+import { api, getToken, getWsBase, type Email } from "@/lib/api";
 
 const CATEGORIES = [
   { value: "", label: "全部" },
@@ -42,14 +42,15 @@ export default function InboxPage() {
   // WebSocket real-time push —— 新 email 入嚟直接 prepend
   useEffect(() => {
     const base = getWsBase();
-    if (!base) return;
+    const token = getToken();
+    if (!base || !token) return;
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
 
     const connect = () => {
       try {
-        ws = new WebSocket(`${base}/ws/emails`);
+        ws = new WebSocket(`${base}/ws/emails?token=${encodeURIComponent(token)}`);
       } catch {
         return;
       }

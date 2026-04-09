@@ -2,18 +2,19 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from app.deps import DbSession
+from app.deps import DbSession, current_user
 from app.models.email import Email, EmailClassification
 from app.models.user import User
 from app.schemas.email import CategoryUpdate, EmailDetail, EmailOut
 from app.services import email_sync
 
-router = APIRouter()
+# 所有 emails endpoints 都要 JWT auth
+router = APIRouter(dependencies=[Depends(current_user)])
 
 
 class SyncResponse(BaseModel):

@@ -74,6 +74,16 @@ export function setToken(token: string | null): void {
   }
 }
 
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -89,7 +99,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const detail = await res.text();
-    throw new Error(`${res.status} ${detail}`);
+    // Token 過期 / 無效 —— 清除並 redirect login（只喺 browser）
+    if (res.status === 401 && typeof window !== "undefined") {
+      setToken(null);
+      const here = window.location.pathname;
+      if (here !== "/login" && here !== "/") {
+        window.location.href = "/login";
+      }
+    }
+    throw new ApiError(res.status, `${res.status} ${detail}`);
   }
   return res.json();
 }

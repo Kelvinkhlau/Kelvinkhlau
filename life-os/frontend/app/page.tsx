@@ -2,17 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, type GmailStatus } from "@/lib/api";
+import { api, getToken, setToken, type GmailStatus } from "@/lib/api";
 
 export default function HomePage() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
+    setLoggedIn(!!getToken());
     api.gmailStatus().then(setGmail).catch(() => setGmail({ connected: false }));
   }, []);
+
+  const handleLogout = () => {
+    setToken(null);
+    setLoggedIn(false);
+  };
 
   const connectGmail = async () => {
     setConnecting(true);
@@ -44,9 +51,27 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen p-6 max-w-2xl mx-auto">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold">life-os</h1>
-        <p className="text-muted-foreground">個人生活整合管理系統</p>
+      <header className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">life-os</h1>
+          <p className="text-muted-foreground">個人生活整合管理系統</p>
+        </div>
+        {loggedIn ? (
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="text-xs px-3 py-1 border border-border rounded hover:bg-muted"
+          >
+            登出
+          </button>
+        ) : (
+          <Link
+            href="/login"
+            className="text-xs px-3 py-1 border border-border rounded hover:bg-muted"
+          >
+            登入
+          </Link>
+        )}
       </header>
 
       {/* Gmail connect card */}
@@ -62,10 +87,15 @@ export default function HomePage() {
             <button
               type="button"
               onClick={triggerSync}
-              disabled={syncing}
+              disabled={syncing || !loggedIn}
               className="w-full p-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50"
+              title={!loggedIn ? "請先 Passkey 登入" : undefined}
             >
-              {syncing ? "同步中…" : "而家同步 Gmail"}
+              {!loggedIn
+                ? "請先登入先可以 sync"
+                : syncing
+                  ? "同步中…"
+                  : "而家同步 Gmail"}
             </button>
           </div>
         ) : (
@@ -95,19 +125,21 @@ export default function HomePage() {
           </div>
         </Link>
 
-        <Link
-          href="/login"
-          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
-        >
-          <div className="font-medium">🔐 Passkey 登入</div>
-          <div className="text-sm text-muted-foreground">
-            Face ID / Touch ID（MVP Week 3）
-          </div>
-        </Link>
+        {!loggedIn && (
+          <Link
+            href="/login"
+            className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+          >
+            <div className="font-medium">🔐 Passkey 登入</div>
+            <div className="text-sm text-muted-foreground">
+              Face ID / Touch ID — 訪問 inbox 前要先登入
+            </div>
+          </Link>
+        )}
       </section>
 
       <p className="mt-12 text-xs text-muted-foreground text-center">
-        MVP Week 1 — 詳見 docs/plan.md
+        詳見 docs/plan.md
       </p>
     </main>
   );

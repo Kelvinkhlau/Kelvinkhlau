@@ -11,9 +11,16 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from anthropic import Anthropic
+from anthropic import (
+    Anthropic,
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    RateLimitError,
+)
 
 from app.config import get_settings
+from app.utils.retry import retry_call
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +102,27 @@ def classify_email(
         f"{snippet}"
     )
 
-    try:
-        response = client.messages.create(
+    def _call():
+        return client.messages.create(
             model=model,
             max_tokens=300,
             system=_load_prompt(),
             messages=[{"role": "user", "content": user_content}],
+        )
+
+    def _is_transient(exc: BaseException) -> bool:
+        if isinstance(exc, (APIConnectionError, APITimeoutError, RateLimitError)):
+            return True
+        if isinstance(exc, APIStatusError):
+            return exc.status_code >= 500 or exc.status_code == 429
+        return False
+
+    try:
+        response = retry_call(
+            _call,
+            max_attempts=3,
+            should_retry=_is_transient,
+            label="claude.messages.create",
         )
     except Exception as e:
         logger.exception("Anthropic API call failed")
