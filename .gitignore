@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backend/life_manager.db
+
+# Environment
+.env
+.env.local
+*.env
+
+# Credentials
+credentials/
+*.json.secret
+gmail_credentials.json
+icloud_credentials.json
+calendar_credentials.json
+token.json
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Backups
+backups/
+*.backup
+
+# Logs
+logs/
+*.log
