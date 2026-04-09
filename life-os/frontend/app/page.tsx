@@ -164,6 +164,16 @@ export default function HomePage() {
           </div>
         </Link>
 
+        <Link
+          href="/todos"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">✅ Todos</div>
+          <div className="text-sm text-muted-foreground">
+            簡單清單 — 記低要做嘅嘢
+          </div>
+        </Link>
+
         {!loggedIn && (
           <Link
             href="/login"

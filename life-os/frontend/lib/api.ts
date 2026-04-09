@@ -69,6 +69,27 @@ export type EmailListResponse = {
   total: number;
 };
 
+export type Todo = {
+  id: number;
+  title: string;
+  description: string | null;
+  priority: "low" | "medium" | "high";
+  due_at: string | null;
+  done: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TodoCreate = {
+  title: string;
+  description?: string | null;
+  priority?: "low" | "medium" | "high";
+  due_at?: string | null;
+};
+
+export type TodoUpdate = Partial<TodoCreate> & { done?: boolean };
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -170,6 +191,27 @@ export const api = {
     if (params?.classify !== undefined) qs.set("classify", String(params.classify));
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<SyncResult>(`/emails/sync${suffix}`, { method: "POST" });
+  },
+
+  // Todos
+  listTodos: (params?: { done?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.done !== undefined) qs.set("done", String(params.done));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<Todo[]>(`/todos${suffix}`);
+  },
+  createTodo: (payload: TodoCreate) =>
+    request<Todo>("/todos", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateTodo: (id: number, payload: TodoUpdate) =>
+    request<Todo>(`/todos/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteTodo: async (id: number): Promise<void> => {
+    await rawFetch(`/todos/${id}`, { method: "DELETE" });
   },
 
   // Gmail auth
