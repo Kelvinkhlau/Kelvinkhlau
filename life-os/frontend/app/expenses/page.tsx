@@ -27,9 +27,12 @@ function monthStartStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+type MonthlyData = { year: number; month: number; total: number; count: number };
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [stats, setStats] = useState<ExpenseStats | null>(null);
+  const [monthly, setMonthly] = useState<MonthlyData[]>([]);
   const [filterCat, setFilterCat] = useState<string>("");
   const [dateFrom, setDateFrom] = useState(monthStartStr());
   const [dateTo, setDateTo] = useState(todayStr());
@@ -50,12 +53,14 @@ export default function ExpensesPage() {
       if (filterCat) params.category = filterCat;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
-      const [list, s] = await Promise.all([
+      const [list, s, m] = await Promise.all([
         api.listExpenses(params),
         api.expenseStats(params),
+        api.expenseMonthly(6),
       ]);
       setExpenses(list);
       setStats(s);
+      setMonthly(m);
     } catch {
       /* ignore */
     }
@@ -143,6 +148,41 @@ export default function ExpensesPage() {
                 ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Monthly trend chart */}
+      {monthly.length > 0 && (
+        <section className="mb-6 p-4 border border-border rounded-lg">
+          <h2 className="font-medium mb-3">月度趨勢</h2>
+          <div className="flex items-end gap-1 h-32">
+            {(() => {
+              const maxVal = Math.max(...monthly.map((m) => m.total), 1);
+              return monthly.map((m) => (
+                <div
+                  key={`${m.year}-${m.month}`}
+                  className="flex-1 flex flex-col items-center gap-1"
+                >
+                  <span className="text-[10px] text-muted-foreground">
+                    ${m.total >= 1000
+                      ? `${(m.total / 1000).toFixed(1)}k`
+                      : m.total.toFixed(0)}
+                  </span>
+                  <div className="w-full flex justify-center">
+                    <div
+                      className="w-4/5 bg-blue-500 rounded-t min-h-[2px]"
+                      style={{
+                        height: `${Math.max((m.total / maxVal) * 100, 2)}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    {m.month}月
+                  </span>
+                </div>
+              ));
+            })()}
+          </div>
         </section>
       )}
 

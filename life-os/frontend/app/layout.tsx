@@ -37,8 +37,8 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-// Inline script to prevent dark mode flash — runs before React hydration
-const themeScript = `
+// Inline script: dark mode flash prevention + service worker registration
+const initScript = `
 (function(){
   try {
     var t = localStorage.getItem('lifeos.theme');
@@ -46,6 +46,9 @@ const themeScript = `
       document.documentElement.classList.add('dark');
     }
   } catch(e){}
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  }
 })()
 `;
 
@@ -57,7 +60,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: initScript }} />
       </head>
       <body>{children}</body>
     </html>

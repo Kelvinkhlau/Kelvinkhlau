@@ -539,6 +539,14 @@ export const api = {
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<Expense[]>(`/expenses${suffix}`);
   },
+  expenseMonthly: (months?: number) => {
+    const qs = new URLSearchParams();
+    if (months) qs.set("months", String(months));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<{ year: number; month: number; total: number; count: number }[]>(
+      `/expenses/monthly${suffix}`
+    );
+  },
   expenseStats: (params?: { date_from?: string; date_to?: string }) => {
     const qs = new URLSearchParams();
     if (params?.date_from) qs.set("date_from", params.date_from);

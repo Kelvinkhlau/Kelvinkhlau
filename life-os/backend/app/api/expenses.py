@@ -3,7 +3,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, extract, func, select
 
 from app.deps import CurrentUser, DbSession, current_user
 from app.models.expense import Expense
@@ -80,6 +80,37 @@ async def expense_stats(
     by_category = {cat: float(amt) for cat, amt in db.execute(cat_stmt).all()}
 
     return ExpenseStats(total=total, count=count, by_category=by_category)
+
+
+@router.get("/monthly")
+async def expense_monthly(
+    user: CurrentUser,
+    db: DbSession,
+    months: int = Query(6, ge=1, le=24, description="過去幾個月"),
+) -> list[dict]:
+    """每月消費彙總 — 用嚟畫趨勢圖。"""
+    stmt = (
+        select(
+            extract("year", Expense.spent_at).label("year"),
+            extract("month", Expense.spent_at).label("month"),
+            func.sum(Expense.amount),
+            func.count(Expense.id),
+        )
+        .where(Expense.user_id == user.id)
+        .group_by("year", "month")
+        .order_by(desc("year"), desc("month"))
+        .limit(months)
+    )
+    rows = db.execute(stmt).all()
+    return [
+        {
+            "year": int(y),
+            "month": int(m),
+            "total": float(t),
+            "count": int(c),
+        }
+        for y, m, t, c in reversed(rows)
+    ]
 
 
 @router.post("", response_model=ExpenseOut, status_code=201)
