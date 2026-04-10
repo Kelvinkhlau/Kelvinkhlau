@@ -6,6 +6,7 @@ from sqlalchemy import desc, select
 from app.deps import CurrentUser, DbSession, current_user
 from app.models.idea import Idea
 from app.schemas.idea import IdeaCreate, IdeaOut, IdeaUpdate
+from app.services.audit import log_action
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -51,6 +52,7 @@ async def create_idea(
     db.add(idea)
     db.commit()
     db.refresh(idea)
+    log_action(db, action="create", user_id=user.id, resource_type="idea", resource_id=idea.id, detail=idea.title)
     return idea
 
 
@@ -95,5 +97,7 @@ async def delete_idea(
     idea = db.get(Idea, idea_id)
     if idea is None or idea.user_id != user.id:
         raise HTTPException(status_code=404, detail="Idea not found")
+    title = idea.title
     db.delete(idea)
     db.commit()
+    log_action(db, action="delete", user_id=user.id, resource_type="idea", resource_id=idea_id, detail=title)

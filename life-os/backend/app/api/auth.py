@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.deps import DbSession
 from app.models.user import User
 from app.services import gmail_client, jwt_service, passkey_service
+from app.services.audit import log_action
 
 router = APIRouter()
 settings = get_settings()
@@ -80,6 +81,7 @@ async def passkey_register_finish(
     user.passkey_sign_count = verified.sign_count
     db.commit()
 
+    log_action(db, action="register", user_id=user.id, detail="Passkey registered")
     token = jwt_service.issue_token(user.id)
     return {"ok": True, "token": token, "user": {"email": user.email, "name": user.name}}
 
@@ -118,6 +120,7 @@ async def passkey_login_finish(
     user.passkey_sign_count = verified.new_sign_count
     db.commit()
 
+    log_action(db, action="login", user_id=user.id, detail="Passkey login")
     token = jwt_service.issue_token(user.id)
     return {"ok": True, "token": token, "user": {"email": user.email, "name": user.name}}
 

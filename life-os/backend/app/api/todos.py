@@ -9,6 +9,7 @@ from app.deps import CurrentUser, DbSession, current_user
 from app.models.project import Project
 from app.models.todo import Todo, TodoPriority
 from app.schemas.todo import TodoCreate, TodoOut, TodoUpdate
+from app.services.audit import log_action
 
 VALID_PRIORITIES = {p.value for p in TodoPriority}
 
@@ -74,6 +75,7 @@ async def create_todo(
     db.add(todo)
     db.commit()
     db.refresh(todo)
+    log_action(db, action="create", user_id=user.id, resource_type="todo", resource_id=todo.id, detail=todo.title)
     return todo
 
 
@@ -125,5 +127,7 @@ async def delete_todo(
     todo = db.get(Todo, todo_id)
     if todo is None or todo.user_id != user.id:
         raise HTTPException(status_code=404, detail="Todo not found")
+    title = todo.title
     db.delete(todo)
     db.commit()
+    log_action(db, action="delete", user_id=user.id, resource_type="todo", resource_id=todo_id, detail=title)

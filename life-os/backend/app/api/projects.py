@@ -7,6 +7,7 @@ from app.deps import CurrentUser, DbSession, current_user
 from app.models.project import Project, ProjectStatus
 from app.models.todo import Todo
 from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
+from app.services.audit import log_action
 
 VALID_STATUSES = {s.value for s in ProjectStatus}
 
@@ -91,6 +92,7 @@ async def create_project(
     db.add(project)
     db.commit()
     db.refresh(project)
+    log_action(db, action="create", user_id=user.id, resource_type="project", resource_id=project.id, detail=project.name)
     return _serialize(project, 0, 0)
 
 
@@ -147,5 +149,7 @@ async def delete_project(
         .where(Todo.project_id == project.id)
         .values(project_id=None)
     )
+    name = project.name
     db.delete(project)
     db.commit()
+    log_action(db, action="delete", user_id=user.id, resource_type="project", resource_id=project_id, detail=name)

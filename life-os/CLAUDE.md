@@ -8,7 +8,7 @@
 - 喺 Mac mini 上 self-host
 - PWA 前端（Next.js）跨 iPhone / iPad / MacBook
 - Local-first，所有資料喺本地 SQLite（加密）
-- 用 Claude API 做 AI 分類 / 摘要
+- 用 Claude API + OpenAI API 做 AI 分類 / 摘要 / 語音
 
 ## 技術棧
 
@@ -17,7 +17,7 @@
 - **Background**: APScheduler（內嵌 FastAPI）
 - **Frontend**: Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui
 - **State**: TanStack Query + Zustand
-- **AI**: Anthropic Claude API（haiku-4-5 / sonnet-4-6）+ OpenAI Whisper（語音）
+- **AI**: Anthropic Claude API（haiku-4-5 / sonnet-4-6）+ OpenAI（GPT-4o / Whisper）
 - **Auth**: WebAuthn / Passkey（Face ID / Touch ID）+ JWT
 - **Package managers**: `uv`（Python）、`pnpm`（Node）
 - **部署**: launchd + Caddy + Tailscale
@@ -37,17 +37,18 @@
 life-os/
 ├── backend/        FastAPI app
 │   ├── app/
-│   │   ├── main.py       # entry
+│   │   ├── main.py       # entry (15 routers)
 │   │   ├── config.py     # pydantic-settings
 │   │   ├── db.py         # SQLAlchemy
-│   │   ├── models/       # ORM
+│   │   ├── models/       # ORM (10 models)
 │   │   ├── schemas/      # Pydantic
-│   │   ├── api/          # routes
+│   │   ├── api/          # routes (15 modules)
 │   │   ├── services/     # 業務邏輯
-│   │   ├── ai/           # Claude 封裝
+│   │   ├── ai/           # Claude / OpenAI 封裝
 │   │   └── workers/      # APScheduler jobs
-│   └── alembic/    DB migrations
-├── frontend/       Next.js PWA
+│   ├── alembic/    DB migrations (0001-0010)
+│   └── tests/      pytest (111+ tests)
+├── frontend/       Next.js PWA (19 pages)
 ├── scripts/        dev / build / install scripts
 ├── deployment/     launchd / Caddy
 └── docs/           plan / architecture / setup
@@ -74,11 +75,10 @@ cd backend && uv run pytest
 cd frontend && pnpm test
 ```
 
-## MVP 進度（Email 智能助手）
+## 完成進度
 
-- [x] Repo scaffold
-- [x] FastAPI hello world
-- [x] SQLAlchemy + Alembic 初始 migration
+### MVP（Email 智能助手）— 全部完成
+- [x] Repo scaffold + FastAPI + SQLAlchemy + Alembic
 - [x] Next.js + Tailwind scaffold
 - [x] Gmail OAuth2 flow
 - [x] Background email sync (APScheduler)
@@ -86,14 +86,48 @@ cd frontend && pnpm test
 - [x] Claude AI 分類 + 「建議」chip
 - [x] WebAuthn / Passkey 登入 + JWT 保護
 - [x] WebSocket real-time push
-- [x] Todo module（bonus）
+
+### Phase 1 — 全部完成
+- [x] Todo module（CRUD + priority + due date）
 - [x] Project module（group todos、進度追蹤）
 - [x] Idea / Card module（快速記 idea、tags、pin/archive）
 - [x] Calendar 同步（Google Calendar API readonly sync）
 - [x] VIP 白名單（auto-mark important、skip AI）
 - [x] AI 助手（自然語言 → 建 todo/idea/project）
 - [x] Daily backup（launchd plist）
-- [x] Mac mini 部署 (launchd + Caddy + Tailscale) 文檔
+
+### Phase 2 — 全部完成
+- [x] 財務消費管理（Expense CRUD + 分類統計 + 月度圖表）
+- [x] 知識管理系統（Note + folder + tags + search）
+- [x] 廣東話語音輸入（OpenAI Whisper API + MediaRecorder）
+- [x] 智能日報（彙總 todos/calendar/email/expenses）
+- [x] 隱私安全升級（AuditLog + 全操作記錄）
+
+### 系統完善
+- [x] Dark mode（三段切換：淺色/深色/跟系統）
+- [x] Audit log 整合（login + CRUD 自動記錄）
+- [x] 數據匯出（JSON backup endpoint）
+- [x] PWA manifest + icons
+
+## API 模組一覽
+
+| Module | Prefix | 功能 |
+|--------|--------|------|
+| auth | /api/auth | Passkey + Gmail OAuth2 |
+| emails | /api/emails | Email CRUD + sync + stats |
+| todos | /api/todos | Todo CRUD |
+| projects | /api/projects | Project CRUD + todo counts |
+| ideas | /api/ideas | Idea CRUD + pin/archive |
+| calendar | /api/calendar | Calendar sync + events |
+| vip | /api/vip | VIP sender management |
+| assistant | /api/assistant | AI chat → actions |
+| expenses | /api/expenses | Expense CRUD + stats |
+| notes | /api/notes | Note CRUD + folders |
+| voice | /api/voice | Whisper transcription |
+| report | /api/report | Daily report aggregation |
+| audit | /api/audit | Audit log query |
+| export | /api/export | Data backup (JSON) |
+| ws | /ws | WebSocket real-time |
 
 ## 完整計劃
 

@@ -37,13 +37,28 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// Inline script to prevent dark mode flash — runs before React hydration
+const themeScript = `
+(function(){
+  try {
+    var t = localStorage.getItem('lifeos.theme');
+    if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  } catch(e){}
+})()
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-Hant">
+    <html lang="zh-Hant" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

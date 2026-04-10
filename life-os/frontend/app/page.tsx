@@ -9,6 +9,7 @@ import {
   type EmailStats,
   type GmailStatus,
 } from "@/lib/api";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function HomePage() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
@@ -67,22 +68,25 @@ export default function HomePage() {
           <h1 className="text-3xl font-bold">life-os</h1>
           <p className="text-muted-foreground">個人生活整合管理系統</p>
         </div>
-        {loggedIn ? (
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="text-xs px-3 py-1 border border-border rounded hover:bg-muted"
-          >
-            登出
-          </button>
-        ) : (
-          <Link
-            href="/login"
-            className="text-xs px-3 py-1 border border-border rounded hover:bg-muted"
-          >
-            登入
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          {loggedIn ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-xs px-3 py-1 border border-border rounded hover:bg-muted"
+            >
+              登出
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="text-xs px-3 py-1 border border-border rounded hover:bg-muted"
+            >
+              登入
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Dashboard stats */}

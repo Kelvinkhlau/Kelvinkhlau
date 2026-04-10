@@ -6,6 +6,7 @@ from sqlalchemy import desc, distinct, select
 from app.deps import CurrentUser, DbSession, current_user
 from app.models.note import Note
 from app.schemas.note import NoteCreate, NoteOut, NoteUpdate
+from app.services.audit import log_action
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -64,6 +65,7 @@ async def create_note(
     db.add(note)
     db.commit()
     db.refresh(note)
+    log_action(db, action="create", user_id=user.id, resource_type="note", resource_id=note.id, detail=note.title)
     return note
 
 
@@ -101,5 +103,7 @@ async def delete_note(
     note = db.get(Note, note_id)
     if note is None or note.user_id != user.id:
         raise HTTPException(status_code=404, detail="Note not found")
+    title = note.title
     db.delete(note)
     db.commit()
+    log_action(db, action="delete", user_id=user.id, resource_type="note", resource_id=note_id, detail=title)

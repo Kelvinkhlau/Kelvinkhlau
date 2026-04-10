@@ -572,6 +572,9 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
 
+  // Export
+  exportAll: () => rawFetch("/export").then((res) => res.json()),
+
   // Audit log
   listAuditLogs: (params?: {
     action?: string;

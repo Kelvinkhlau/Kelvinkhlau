@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from app.deps import CurrentUser, DbSession, current_user
 from app.models.expense import Expense
 from app.schemas.expense import ExpenseCreate, ExpenseOut, ExpenseStats, ExpenseUpdate
+from app.services.audit import log_action
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -98,6 +99,7 @@ async def create_expense(
     db.add(expense)
     db.commit()
     db.refresh(expense)
+    log_action(db, action="create", user_id=user.id, resource_type="expense", resource_id=expense.id, detail=f"${expense.amount} {expense.category}")
     return expense
 
 
@@ -137,5 +139,7 @@ async def delete_expense(
     expense = db.get(Expense, expense_id)
     if expense is None or expense.user_id != user.id:
         raise HTTPException(status_code=404, detail="Expense not found")
+    detail = f"${expense.amount} {expense.category}"
     db.delete(expense)
     db.commit()
+    log_action(db, action="delete", user_id=user.id, resource_type="expense", resource_id=expense_id, detail=detail)
