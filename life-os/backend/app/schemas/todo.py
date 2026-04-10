@@ -10,6 +10,7 @@ class TodoBase(BaseModel):
     description: str | None = None
     priority: str = "medium"  # low / medium / high
     due_at: datetime | None = None
+    project_id: int | None = None
 
 
 class TodoCreate(TodoBase):
@@ -22,6 +23,7 @@ class TodoUpdate(BaseModel):
     priority: str | None = None
     due_at: datetime | None = None
     done: bool | None = None
+    project_id: int | None = None
 
 
 class TodoOut(TodoBase):

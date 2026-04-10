@@ -75,6 +75,7 @@ export type Todo = {
   description: string | null;
   priority: "low" | "medium" | "high";
   due_at: string | null;
+  project_id: number | null;
   done: boolean;
   completed_at: string | null;
   created_at: string;
@@ -86,9 +87,33 @@ export type TodoCreate = {
   description?: string | null;
   priority?: "low" | "medium" | "high";
   due_at?: string | null;
+  project_id?: number | null;
 };
 
 export type TodoUpdate = Partial<TodoCreate> & { done?: boolean };
+
+export type ProjectStatus = "active" | "paused" | "done" | "archived";
+
+export type Project = {
+  id: number;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  color: string | null;
+  todo_count: number;
+  done_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectCreate = {
+  name: string;
+  description?: string | null;
+  status?: ProjectStatus;
+  color?: string | null;
+};
+
+export type ProjectUpdate = Partial<ProjectCreate>;
 
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
@@ -194,9 +219,11 @@ export const api = {
   },
 
   // Todos
-  listTodos: (params?: { done?: boolean }) => {
+  listTodos: (params?: { done?: boolean; project_id?: number }) => {
     const qs = new URLSearchParams();
     if (params?.done !== undefined) qs.set("done", String(params.done));
+    if (params?.project_id !== undefined)
+      qs.set("project_id", String(params.project_id));
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<Todo[]>(`/todos${suffix}`);
   },
@@ -212,6 +239,28 @@ export const api = {
     }),
   deleteTodo: async (id: number): Promise<void> => {
     await rawFetch(`/todos/${id}`, { method: "DELETE" });
+  },
+
+  // Projects
+  listProjects: (params?: { status?: ProjectStatus }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<Project[]>(`/projects${suffix}`);
+  },
+  getProject: (id: number) => request<Project>(`/projects/${id}`),
+  createProject: (payload: ProjectCreate) =>
+    request<Project>("/projects", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateProject: (id: number, payload: ProjectUpdate) =>
+    request<Project>(`/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteProject: async (id: number): Promise<void> => {
+    await rawFetch(`/projects/${id}`, { method: "DELETE" });
   },
 
   // Gmail auth

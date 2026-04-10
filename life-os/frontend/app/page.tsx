@@ -174,6 +174,16 @@ export default function HomePage() {
           </div>
         </Link>
 
+        <Link
+          href="/projects"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">📁 Projects</div>
+          <div className="text-sm text-muted-foreground">
+            將 todos group 做專案，追進度
+          </div>
+        </Link>
+
         {!loggedIn && (
           <Link
             href="/login"

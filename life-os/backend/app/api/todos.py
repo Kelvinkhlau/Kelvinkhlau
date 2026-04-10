@@ -6,10 +6,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import asc, desc, select
 
 from app.deps import CurrentUser, DbSession, current_user
+from app.models.project import Project
 from app.models.todo import Todo, TodoPriority
 from app.schemas.todo import TodoCreate, TodoOut, TodoUpdate
 
 VALID_PRIORITIES = {p.value for p in TodoPriority}
+
+
+def _validate_project(db, user_id: int, project_id: int | None) -> None:
+    """確保 project_id 屬於呢個 user（或者係 None）。"""
+    if project_id is None:
+        return
+    project = db.get(Project, project_id)
+    if project is None or project.user_id != user_id:
+        raise HTTPException(status_code=400, detail="Invalid project_id")
 
 # 所有 todos endpoints 都要 JWT auth
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -20,6 +30,7 @@ async def list_todos(
     user: CurrentUser,
     db: DbSession,
     done: bool | None = Query(None, description="只要 done=true / done=false"),
+    project_id: int | None = Query(None, description="只要特定 project 嘅 todos"),
     limit: int = Query(200, le=500),
 ) -> list[Todo]:
     """列出 todos。未完成行先，按 due_at 同 created_at 排序。"""
@@ -36,6 +47,8 @@ async def list_todos(
     )
     if done is not None:
         stmt = stmt.where(Todo.done.is_(done))
+    if project_id is not None:
+        stmt = stmt.where(Todo.project_id == project_id)
     return list(db.execute(stmt).scalars().all())
 
 
@@ -49,12 +62,14 @@ async def create_todo(
             status_code=400,
             detail=f"priority 要係 {sorted(VALID_PRIORITIES)}",
         )
+    _validate_project(db, user.id, payload.project_id)
     todo = Todo(
         user_id=user.id,
         title=payload.title.strip(),
         description=payload.description,
         priority=payload.priority,
         due_at=payload.due_at,
+        project_id=payload.project_id,
     )
     db.add(todo)
     db.commit()
@@ -93,6 +108,10 @@ async def update_todo(
     if payload.done is not None and payload.done != todo.done:
         todo.done = payload.done
         todo.completed_at = datetime.utcnow() if payload.done else None
+    # project_id 用 model_fields_set 區分 "未提供" 同 "明確 set 做 null"
+    if "project_id" in payload.model_fields_set:
+        _validate_project(db, user.id, payload.project_id)
+        todo.project_id = payload.project_id
 
     db.commit()
     db.refresh(todo)

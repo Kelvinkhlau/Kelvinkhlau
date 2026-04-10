@@ -28,6 +28,16 @@ def test_todos_create_requires_auth(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_projects_list_requires_auth(client: TestClient) -> None:
+    response = client.get("/api/projects")
+    assert response.status_code == 401
+
+
+def test_projects_create_requires_auth(client: TestClient) -> None:
+    response = client.post("/api/projects", json={"name": "hi"})
+    assert response.status_code == 401
+
+
 def test_bad_token_rejected(client: TestClient) -> None:
     response = client.get(
         "/api/todos",
