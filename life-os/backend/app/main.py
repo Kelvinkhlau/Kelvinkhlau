@@ -70,6 +70,39 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}
 
 
+@app.get("/api/ai-test")
+async def ai_test_public() -> dict:
+    """測試 AI API 連線（唔需要 auth，方便 curl 診斷）。"""
+    import logging
+
+    from app.services import ai_classifier
+
+    logger = logging.getLogger(__name__)
+    provider = (settings.ai_provider or "auto").lower()
+
+    try:
+        result = ai_classifier.classify_email(
+            subject="Test: 50% off all items today only!",
+            sender="promo@testshop.com",
+            snippet="Don't miss our biggest sale of the year. Use code SAVE50 at checkout.",
+        )
+        return {
+            "ok": True,
+            "provider": provider,
+            "model": result.model,
+            "category": result.category,
+            "confidence": result.confidence,
+            "reason": result.reason,
+        }
+    except Exception as e:
+        logger.exception("AI test failed")
+        return {
+            "ok": False,
+            "provider": provider,
+            "error": str(e),
+        }
+
+
 # Production：serve frontend static files（同一個 origin）
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
