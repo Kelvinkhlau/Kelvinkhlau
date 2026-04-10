@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, type EmailDetail } from "@/lib/api";
 
@@ -10,6 +10,76 @@ const CATEGORIES = [
   { value: "normal", label: "一般" },
   { value: "promotional", label: "廣告" },
 ];
+
+/** 用 sandbox iframe 安全地顯示 HTML email（包括外部圖片）。 */
+function EmailHtmlViewer({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const adjustHeight = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentDocument?.body) return;
+    // 加少少 buffer 避免出現 scrollbar
+    iframe.style.height =
+      iframe.contentDocument.body.scrollHeight + 16 + "px";
+  }, []);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+
+    // 寫入 HTML 內容，加 base target=_blank 令連結喺新 tab 開
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<base target="_blank">
+<style>
+  body { margin: 0; padding: 8px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; line-height: 1.6; word-break: break-word; overflow-wrap: break-word; }
+  img { max-width: 100%; height: auto; }
+  a { color: #2563eb; }
+</style>
+</head><body>${html}</body></html>`);
+    doc.close();
+
+    // 等圖片載入完再調整高度
+    const images = doc.querySelectorAll("img");
+    let loaded = 0;
+    const total = images.length;
+    if (total === 0) {
+      adjustHeight();
+    } else {
+      images.forEach((img) => {
+        const check = () => {
+          loaded++;
+          if (loaded >= total) adjustHeight();
+        };
+        if (img.complete) {
+          check();
+        } else {
+          img.addEventListener("load", check);
+          img.addEventListener("error", check);
+        }
+      });
+    }
+
+    // fallback: 1 秒後再調一次（防某啲圖片 lazy load）
+    const timer = setTimeout(adjustHeight, 1000);
+    return () => clearTimeout(timer);
+  }, [html, adjustHeight]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      sandbox="allow-same-origin"
+      className="w-full border-0"
+      style={{ minHeight: 200 }}
+      title="Email content"
+    />
+  );
+}
 
 function EmailDetailContent() {
   const searchParams = useSearchParams();
@@ -126,9 +196,13 @@ function EmailDetailContent() {
         </section>
 
         <section className="border-t border-border pt-4">
-          <div className="whitespace-pre-wrap text-sm leading-relaxed">
-            {email.body_text || email.snippet}
-          </div>
+          {email.body_html ? (
+            <EmailHtmlViewer html={email.body_html} />
+          ) : (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed">
+              {email.body_text || email.snippet}
+            </div>
+          )}
         </section>
       </article>
     </main>
