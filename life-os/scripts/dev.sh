@@ -31,7 +31,7 @@ trap cleanup EXIT INT TERM
     pnpm install
   fi
   echo "[frontend] starting on http://0.0.0.0:3000"
-  pnpm dev -- --hostname 0.0.0.0
+  pnpm exec next dev -p 3000 -H 0.0.0.0
 ) &
 
 wait
