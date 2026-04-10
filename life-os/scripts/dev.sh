@@ -18,8 +18,9 @@ trap cleanup EXIT INT TERM
     echo "[backend] uv sync..."
     uv sync
   fi
-  echo "[backend] starting on http://localhost:8000"
-  uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+  PORT="${APP_PORT:-4100}"
+  echo "[backend] starting on http://localhost:$PORT"
+  uv run uvicorn app.main:app --reload --host 127.0.0.1 --port "$PORT"
 ) &
 
 # Frontend
