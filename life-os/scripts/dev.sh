@@ -20,7 +20,7 @@ trap cleanup EXIT INT TERM
   fi
   PORT="${APP_PORT:-3100}"
   echo "[backend] starting on http://localhost:$PORT"
-  uv run uvicorn app.main:app --reload --host 127.0.0.1 --port "$PORT"
+  uv run uvicorn app.main:app --reload --host 0.0.0.0 --port "$PORT"
 ) &
 
 # Frontend
@@ -30,8 +30,8 @@ trap cleanup EXIT INT TERM
     echo "[frontend] pnpm install..."
     pnpm install
   fi
-  echo "[frontend] starting on http://localhost:3000"
-  pnpm dev
+  echo "[frontend] starting on http://0.0.0.0:3000"
+  pnpm dev -- --hostname 0.0.0.0
 ) &
 
 wait
