@@ -239,8 +239,10 @@ async def trigger_sync(
     - 第一次用（冇 history_id）會拉最近 `limit` 封
     - 之後會 incremental sync
     """
-    user = db.execute(select(User).limit(1)).scalar_one_or_none()
-    if user is None or not user.gmail_refresh_token:
+    user = db.execute(
+        select(User).where(User.gmail_refresh_token.is_not(None)).limit(1)
+    ).scalar_one_or_none()
+    if user is None:
         raise HTTPException(
             status_code=400,
             detail="Gmail 仲未連接 — 請先去 /api/auth/gmail/authorize",
