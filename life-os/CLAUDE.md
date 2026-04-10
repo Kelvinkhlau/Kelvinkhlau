@@ -87,6 +87,7 @@ cd frontend && pnpm test
 - [x] WebAuthn / Passkey 登入 + JWT 保護
 - [x] WebSocket real-time push
 - [x] Todo module（bonus）
+- [x] Project module（group todos、進度追蹤）
 - [x] Daily backup（launchd plist）
 - [x] Mac mini 部署 (launchd + Caddy + Tailscale) 文檔
 
