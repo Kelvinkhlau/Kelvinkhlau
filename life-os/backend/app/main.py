@@ -122,6 +122,64 @@ async def ai_test_public() -> dict:
     }
 
 
+@app.post("/api/classify-now")
+async def classify_now_public(limit: int = 50) -> dict:
+    """開發用：批量分類未分類嘅 emails（唔需要 auth）。"""
+    import logging
+
+    from sqlalchemy import desc, select
+
+    from app.db import SessionLocal
+    from app.models.email import Email, EmailClassification
+    from app.services import ai_classifier, email_sync
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    try:
+        subq = select(EmailClassification.email_id)
+        stmt = (
+            select(Email)
+            .where(Email.id.notin_(subq))
+            .order_by(desc(Email.received_at))
+            .limit(limit)
+        )
+        emails = db.execute(stmt).scalars().all()
+        total = len(emails)
+
+        if total == 0:
+            return {"total_unclassified": 0, "classified": 0, "errors": []}
+
+        examples = email_sync._get_recent_corrections(db, limit=5)
+        classified = 0
+        errors: list[str] = []
+
+        for email in emails:
+            try:
+                result = ai_classifier.classify_email(
+                    subject=email.subject,
+                    sender=email.sender,
+                    snippet=email.snippet or (email.body_text or "")[:500],
+                    examples=examples,
+                )
+                cls = EmailClassification(
+                    email_id=email.id,
+                    ai_category=result.category,
+                    ai_confidence=result.confidence,
+                    ai_reason=result.reason,
+                    ai_model=result.model,
+                )
+                db.add(cls)
+                classified += 1
+            except Exception as e:
+                errors.append(f"email {email.id}: {e}")
+                logger.exception("classify failed for email %d", email.id)
+
+        db.commit()
+        return {"total_unclassified": total, "classified": classified, "errors": errors}
+    finally:
+        db.close()
+
+
 # Production：serve frontend static files（同一個 origin）
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
