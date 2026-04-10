@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.vip import is_vip
 from app.db import SessionLocal
 from app.models.email import Email, EmailClassification
 from app.models.user import User
@@ -89,21 +90,30 @@ def sync_for_user(
         new_count += 1
         new_emails.append(email)
 
-        # AI 分類
+        # 分類：VIP → 直接 "important"；否則用 AI
         if classify:
             try:
-                result = ai_classifier.classify_email(
-                    subject=parsed.subject,
-                    sender=parsed.sender,
-                    snippet=parsed.snippet or parsed.body_text[:500],
-                )
-                classification = EmailClassification(
-                    email_id=email.id,
-                    ai_category=result.category,
-                    ai_confidence=result.confidence,
-                    ai_reason=result.reason,
-                    ai_model=result.model,
-                )
+                if is_vip(db, user.id, parsed.sender_email):
+                    classification = EmailClassification(
+                        email_id=email.id,
+                        ai_category="important",
+                        ai_confidence=1.0,
+                        ai_reason="VIP 白名單",
+                        ai_model="vip-rule",
+                    )
+                else:
+                    result = ai_classifier.classify_email(
+                        subject=parsed.subject,
+                        sender=parsed.sender,
+                        snippet=parsed.snippet or parsed.body_text[:500],
+                    )
+                    classification = EmailClassification(
+                        email_id=email.id,
+                        ai_category=result.category,
+                        ai_confidence=result.confidence,
+                        ai_reason=result.reason,
+                        ai_model=result.model,
+                    )
                 db.add(classification)
                 classified_count += 1
             except Exception as e:

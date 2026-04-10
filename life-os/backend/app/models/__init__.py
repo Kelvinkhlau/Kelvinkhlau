@@ -6,6 +6,7 @@ from app.models.idea import Idea
 from app.models.project import Project
 from app.models.todo import Todo
 from app.models.user import User
+from app.models.vip import VipSender
 
 __all__ = [
     "User",
@@ -15,4 +16,5 @@ __all__ = [
     "Project",
     "Idea",
     "CalendarEvent",
+    "VipSender",
 ]

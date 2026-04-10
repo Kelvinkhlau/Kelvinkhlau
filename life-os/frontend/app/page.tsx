@@ -204,6 +204,16 @@ export default function HomePage() {
           </div>
         </Link>
 
+        <Link
+          href="/vip"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">⭐ VIP 白名單</div>
+          <div className="text-sm text-muted-foreground">
+            重要寄件者 — email 自動標「重要」
+          </div>
+        </Link>
+
         {!loggedIn && (
           <Link
             href="/login"

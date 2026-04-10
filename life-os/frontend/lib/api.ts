@@ -160,6 +160,25 @@ export type CalendarSyncResult = {
   updated: number;
 };
 
+export type VipSender = {
+  id: number;
+  email: string;
+  name: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type VipCreate = {
+  email: string;
+  name?: string;
+  note?: string | null;
+};
+
+export type VipUpdate = {
+  name?: string;
+  note?: string | null;
+};
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -353,6 +372,22 @@ export const api = {
     return request<CalendarSyncResult>(`/calendar/sync${suffix}`, {
       method: "POST",
     });
+  },
+
+  // VIP senders
+  listVips: () => request<VipSender[]>("/vip"),
+  addVip: (payload: VipCreate) =>
+    request<VipSender>("/vip", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateVip: (id: number, payload: VipUpdate) =>
+    request<VipSender>(`/vip/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteVip: async (id: number): Promise<void> => {
+    await rawFetch(`/vip/${id}`, { method: "DELETE" });
   },
 
   // Gmail auth
