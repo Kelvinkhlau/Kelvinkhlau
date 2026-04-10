@@ -82,21 +82,30 @@ def _build_flow(state: str | None = None) -> Flow:
     )
 
 
+# 單用戶系統：暫存 PKCE code_verifier（authorize → callback 之間）
+_pkce_code_verifier: str | None = None
+
+
 def build_authorization_url() -> tuple[str, str]:
     """返回 (authorization_url, state)。"""
+    global _pkce_code_verifier
     flow = _build_flow()
     url, state = flow.authorization_url(
         access_type="offline",      # 拎 refresh_token
         include_granted_scopes="true",
         prompt="consent",           # 確保每次都 issue refresh_token
     )
+    _pkce_code_verifier = flow.code_verifier
     return url, state
 
 
 def exchange_code_for_tokens(code: str, state: str | None = None) -> dict[str, Any]:
     """用 authorization code 換 access + refresh token。"""
+    global _pkce_code_verifier
     flow = _build_flow(state=state)
+    flow.code_verifier = _pkce_code_verifier
     flow.fetch_token(code=code)
+    _pkce_code_verifier = None
     creds = flow.credentials
 
     # 順便攞 profile 拎 email / name
