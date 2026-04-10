@@ -254,6 +254,16 @@ export default function HomePage() {
           </div>
         </Link>
 
+        <Link
+          href="/audit"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">🔒 審計記錄</div>
+          <div className="text-sm text-muted-foreground">
+            所有操作記錄 — 登入、建立、刪除追蹤
+          </div>
+        </Link>
+
         {!loggedIn && (
           <Link
             href="/login"

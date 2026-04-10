@@ -210,6 +210,17 @@ export type ExpenseStats = {
   by_category: Record<string, number>;
 };
 
+export type AuditLogEntry = {
+  id: number;
+  user_id: number | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: number | null;
+  detail: string | null;
+  ip_address: string | null;
+  created_at: string;
+};
+
 export type DailyReport = {
   date: string;
   todos: {
@@ -560,6 +571,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+
+  // Audit log
+  listAuditLogs: (params?: {
+    action?: string;
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.action) qs.set("action", params.action);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<AuditLogEntry[]>(`/audit${suffix}`);
+  },
 
   // Daily Report
   dailyReport: (params?: { report_date?: string }) => {

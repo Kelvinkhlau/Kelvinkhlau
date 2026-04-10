@@ -1,5 +1,6 @@
 """ORM models。Import all models here so Alembic can detect them."""
 
+from app.models.audit_log import AuditLog
 from app.models.calendar_event import CalendarEvent
 from app.models.email import Email, EmailClassification
 from app.models.expense import Expense
@@ -21,4 +22,5 @@ __all__ = [
     "VipSender",
     "Expense",
     "Note",
+    "AuditLog",
 ]
