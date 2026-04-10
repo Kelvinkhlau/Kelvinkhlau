@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/lifeos.db"
     database_encryption_key: str | None = None
 
+    # AI provider — "openai" 或 "anthropic"（emails 分類用邊個）
+    ai_provider: str = "openai"
+
     # Anthropic
     anthropic_api_key: str | None = None
     claude_model_fast: str = "claude-haiku-4-5"
@@ -37,6 +40,8 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str | None = None
+    openai_model_fast: str = "gpt-4o-mini"
+    openai_model_smart: str = "gpt-4o"
 
     # Gmail OAuth2
     google_client_id: str | None = None
