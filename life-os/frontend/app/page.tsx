@@ -205,6 +205,16 @@ export default function HomePage() {
         </Link>
 
         <Link
+          href="/expenses"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">💰 消費記錄</div>
+          <div className="text-sm text-muted-foreground">
+            記低日常開支，追蹤每月消費
+          </div>
+        </Link>
+
+        <Link
           href="/assistant"
           className="block p-4 border border-border rounded-lg hover:bg-muted transition"
         >

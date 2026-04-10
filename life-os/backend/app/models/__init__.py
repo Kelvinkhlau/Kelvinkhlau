@@ -2,6 +2,7 @@
 
 from app.models.calendar_event import CalendarEvent
 from app.models.email import Email, EmailClassification
+from app.models.expense import Expense
 from app.models.idea import Idea
 from app.models.project import Project
 from app.models.todo import Todo
@@ -17,4 +18,5 @@ __all__ = [
     "Idea",
     "CalendarEvent",
     "VipSender",
+    "Expense",
 ]

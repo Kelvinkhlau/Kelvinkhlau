@@ -179,6 +179,37 @@ export type VipUpdate = {
   note?: string | null;
 };
 
+export type Expense = {
+  id: number;
+  amount: number;
+  currency: string;
+  category: string;
+  description: string | null;
+  merchant: string | null;
+  payment_method: string | null;
+  spent_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExpenseCreate = {
+  amount: number;
+  currency?: string;
+  category: string;
+  description?: string | null;
+  merchant?: string | null;
+  payment_method?: string | null;
+  spent_at: string;
+};
+
+export type ExpenseUpdate = Partial<ExpenseCreate>;
+
+export type ExpenseStats = {
+  total: number;
+  count: number;
+  by_category: Record<string, number>;
+};
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -388,6 +419,44 @@ export const api = {
     }),
   deleteVip: async (id: number): Promise<void> => {
     await rawFetch(`/vip/${id}`, { method: "DELETE" });
+  },
+
+  // Expenses
+  listExpenses: (params?: {
+    category?: string;
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.category) qs.set("category", params.category);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<Expense[]>(`/expenses${suffix}`);
+  },
+  expenseStats: (params?: { date_from?: string; date_to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<ExpenseStats>(`/expenses/stats${suffix}`);
+  },
+  createExpense: (payload: ExpenseCreate) =>
+    request<Expense>("/expenses", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateExpense: (id: number, payload: ExpenseUpdate) =>
+    request<Expense>(`/expenses/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteExpense: async (id: number): Promise<void> => {
+    await rawFetch(`/expenses/${id}`, { method: "DELETE" });
   },
 
   // AI assistant
