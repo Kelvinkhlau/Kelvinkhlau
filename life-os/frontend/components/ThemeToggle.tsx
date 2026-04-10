@@ -1,50 +1,40 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useAppStore } from "@/lib/store";
 
 type Theme = "light" | "dark" | "system";
 
-const STORAGE_KEY = "lifeos.theme";
+const LABELS: Record<Theme, string> = {
+  light: "淺色",
+  dark: "深色",
+  system: "跟系統",
+};
 
-function getSystemDark(): boolean {
-  return typeof window !== "undefined" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-function applyTheme(theme: Theme) {
-  const isDark = theme === "dark" || (theme === "system" && getSystemDark());
-  document.documentElement.classList.toggle("dark", isDark);
-}
+const ICONS: Record<Theme, string> = {
+  dark: "\u{1F319}",
+  light: "\u{2600}\u{FE0F}",
+  system: "\u{1F5A5}\u{FE0F}",
+};
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("system");
-
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored) {
-      setTheme(stored);
-      applyTheme(stored);
-    }
-  }, []);
+  const theme = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
 
   const cycle = () => {
     const next: Theme =
       theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
     setTheme(next);
-    localStorage.setItem(STORAGE_KEY, next);
-    applyTheme(next);
   };
-
-  const icon = theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "🖥️";
 
   return (
     <button
       type="button"
       onClick={cycle}
       className="text-xs px-2 py-1 border border-border rounded hover:bg-muted"
-      title={`主題：${theme === "dark" ? "深色" : theme === "light" ? "淺色" : "跟系統"}`}
+      title={`主題：${LABELS[theme]}`}
+      aria-label={`切換主題，目前：${LABELS[theme]}`}
     >
-      {icon}
+      {ICONS[theme]}
     </button>
   );
 }

@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, getWsBase, type Email } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
 
 const CATEGORIES = [
   { value: "", label: "全部" },
@@ -26,12 +29,17 @@ const CATEGORY_OPTIONS = [
   { value: "promotional", label: "廣告", color: "bg-amber-50 text-amber-700 border-amber-200" },
 ];
 
-function classificationChip(
-  email: Email,
-  editingId: number | null,
-  setEditingId: (id: number | null) => void,
-  onChangeCategory: (emailId: number, category: string) => void,
-) {
+function ClassificationChip({
+  email,
+  editingId,
+  setEditingId,
+  onChangeCategory,
+}: {
+  email: Email;
+  editingId: number | null;
+  setEditingId: (id: number | null) => void;
+  onChangeCategory: (emailId: number, category: string) => void;
+}) {
   if (!email.classification) return null;
   const cat = email.classification.final_category;
   const conf = email.classification.ai_confidence;
@@ -45,7 +53,6 @@ function classificationChip(
         ? "bg-amber-50 text-amber-700 border-amber-200"
         : "bg-slate-50 text-slate-700 border-slate-200";
 
-  // 展開模式：顯示 3 個分類按鈕
   if (editingId === email.id) {
     return (
       <div
@@ -72,7 +79,6 @@ function classificationChip(
     );
   }
 
-  // 預設模式：顯示分類 chip，點擊展開
   return (
     <button
       onClick={(e) => {
@@ -90,6 +96,7 @@ function classificationChip(
             ? "用戶修正 — 撳改分類"
             : `AI 分類（信心 ${(conf * 100).toFixed(0)}%）— 撳改分類`
       }
+      aria-label={`分類：${CATEGORY_LABEL[cat] ?? cat}，撳改分類`}
     >
       {isSuggestion ? "建議：" : ""}
       {CATEGORY_LABEL[cat] ?? cat}
@@ -98,10 +105,7 @@ function classificationChip(
 }
 
 export default function InboxPage() {
-  const [emails, setEmails] = useState<Email[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [category, setCategory] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -110,28 +114,6 @@ export default function InboxPage() {
   const [page, setPage] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
-
-  async function handleCategoryChange(emailId: number, newCategory: string) {
-    try {
-      const res = await api.updateCategory(emailId, newCategory);
-      setEmails((prev) =>
-        prev.map((e) =>
-          e.id === emailId && e.classification
-            ? {
-                ...e,
-                classification: {
-                  ...e.classification,
-                  user_category: newCategory,
-                  final_category: res.final_category,
-                },
-              }
-            : e,
-        ),
-      );
-    } catch {
-      // silent fail — next refresh will show correct state
-    }
-  }
 
   // Debounce search input
   useEffect(() => {
@@ -144,27 +126,51 @@ export default function InboxPage() {
     setPage(0);
   }, [category, debouncedQ, unreadOnly, showArchived]);
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    api
-      .listEmails({
+  const queryKey = ["emails", category, debouncedQ, unreadOnly, showArchived, page];
+
+  const { data, isLoading } = useQuery({
+    queryKey,
+    queryFn: () =>
+      api.listEmails({
         category: category || undefined,
         q: debouncedQ || undefined,
         unread_only: unreadOnly || undefined,
         archived: showArchived || undefined,
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
-      })
-      .then((res) => {
-        setEmails(res.items);
-        setTotal(res.total);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [category, debouncedQ, unreadOnly, page]);
+      }),
+  });
 
-  // WebSocket real-time push —— 新 email 入嚟直接 prepend（只喺第一頁）
+  const emails = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  const categoryMutation = useMutation({
+    mutationFn: ({ emailId, newCategory }: { emailId: number; newCategory: string }) =>
+      api.updateCategory(emailId, newCategory),
+    onSuccess: (res, { emailId, newCategory }) => {
+      queryClient.setQueryData(queryKey, (old: typeof data) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((e: Email) =>
+            e.id === emailId && e.classification
+              ? {
+                  ...e,
+                  classification: {
+                    ...e.classification,
+                    user_category: newCategory,
+                    final_category: res.final_category,
+                  },
+                }
+              : e
+          ),
+        };
+      });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // WebSocket real-time push
   useEffect(() => {
     const base = getWsBase();
     const token = getToken();
@@ -176,7 +182,7 @@ export default function InboxPage() {
     const connect = () => {
       try {
         ws = new WebSocket(
-          `${base}/ws/emails?token=${encodeURIComponent(token)}`,
+          `${base}/ws/emails?token=${encodeURIComponent(token)}`
         );
       } catch {
         return;
@@ -184,18 +190,19 @@ export default function InboxPage() {
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
-          if (msg.type === "email.new" && msg.email) {
-            setEmails((prev) => {
-              if (prev.some((e) => e.id === msg.email.id)) return prev;
-              // 只喺第一頁先 prepend，避免跨頁亂序
-              if (page !== 0) return prev;
-              return [msg.email as Email, ...prev];
+          if (msg.type === "email.new" && msg.email && page === 0) {
+            queryClient.setQueryData(queryKey, (old: typeof data) => {
+              if (!old) return old;
+              if (old.items.some((e: Email) => e.id === msg.email.id)) return old;
+              return {
+                items: [msg.email as Email, ...old.items],
+                total: old.total + 1,
+              };
             });
-            setTotal((t) => t + 1);
             setLiveCount((n) => n + 1);
           }
         } catch {
-          // ignore
+          // ignore malformed messages
         }
       };
       ws.onclose = () => {
@@ -213,14 +220,14 @@ export default function InboxPage() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, [page]);
+  }, [page, queryClient, queryKey]);
 
   const resultLabel = useMemo(() => {
-    if (loading) return "載入中…";
+    if (isLoading) return "載入中…";
     const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
     const to = Math.min((page + 1) * PAGE_SIZE, total);
     return `${from}-${to} / ${total}`;
-  }, [loading, total, page]);
+  }, [isLoading, total, page]);
 
   const lastPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
 
@@ -231,7 +238,7 @@ export default function InboxPage() {
           <h1 className="text-2xl font-bold">Inbox</h1>
           {liveCount > 0 && (
             <span className="text-xs text-green-600">
-              🟢 {liveCount} 封新 email（實時）
+              {liveCount} 封新 email（實時）
             </span>
           )}
         </div>
@@ -247,6 +254,7 @@ export default function InboxPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="w-full px-3 py-2 border border-border rounded-md bg-background"
+          aria-label="搜尋 email"
         />
         <div className="flex gap-2 items-center flex-wrap">
           {CATEGORIES.map((c) => (
@@ -288,26 +296,16 @@ export default function InboxPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 mb-4 text-red-600 border border-red-200 rounded">
-          錯誤：{error}
-        </div>
-      )}
-
-      {!loading && emails.length === 0 ? (
-        <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-lg">
-          {debouncedQ || category || unreadOnly ? (
-            <>冇符合條件嘅 email。</>
-          ) : (
-            <>
-              仲未有任何 email。
-              <br />
-              <span className="text-sm">
-                連接 Gmail account 之後背景 sync 會自動填滿。
-              </span>
-            </>
-          )}
-        </div>
+      {isLoading ? (
+        <Loading />
+      ) : emails.length === 0 ? (
+        <EmptyState
+          message={
+            debouncedQ || category || unreadOnly
+              ? "冇符合條件嘅 email。"
+              : "仲未有任何 email。連接 Gmail account 之後背景 sync 會自動填滿。"
+          }
+        />
       ) : (
         <>
           <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
@@ -334,7 +332,14 @@ export default function InboxPage() {
                         {email.snippet}
                       </div>
                     </div>
-                    {classificationChip(email, editingCategoryId, setEditingCategoryId, handleCategoryChange)}
+                    <ClassificationChip
+                      email={email}
+                      editingId={editingCategoryId}
+                      setEditingId={setEditingCategoryId}
+                      onChangeCategory={(id, cat) =>
+                        categoryMutation.mutate({ emailId: id, newCategory: cat })
+                      }
+                    />
                   </div>
                 </Link>
               </li>
@@ -344,7 +349,7 @@ export default function InboxPage() {
           {total > PAGE_SIZE && (
             <div className="flex items-center justify-between mt-4 text-sm">
               <button
-                disabled={page === 0 || loading}
+                disabled={page === 0}
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 className="px-3 py-1 border border-border rounded disabled:opacity-40"
               >
@@ -354,7 +359,7 @@ export default function InboxPage() {
                 第 {page + 1} / {lastPage + 1} 頁
               </span>
               <button
-                disabled={page >= lastPage || loading}
+                disabled={page >= lastPage}
                 onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
                 className="px-3 py-1 border border-border rounded disabled:opacity-40"
               >

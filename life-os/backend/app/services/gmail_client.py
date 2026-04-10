@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parseaddr, parsedate_to_datetime
@@ -22,6 +23,8 @@ from googleapiclient.errors import HttpError
 
 from app.config import get_settings
 from app.utils.retry import retry_call
+
+logger = logging.getLogger(__name__)
 
 
 def _gmail_is_transient(exc: BaseException) -> bool:
@@ -185,6 +188,11 @@ class GmailClient:
         except HttpError as e:
             status = getattr(e.resp, "status", 0) or 0
             if status in (404, 410):
+                logger.warning(
+                    "Gmail history_id %s expired (HTTP %s) — falling back to recent 50 messages",
+                    history_id,
+                    status,
+                )
                 return self.list_recent_message_ids(max_results=50)
             raise
 

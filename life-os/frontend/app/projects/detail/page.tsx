@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Project, type ProjectStatus, type Todo } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
 
 const STATUSES: { value: ProjectStatus; label: string }[] = [
   { value: "active", label: "進行中" },
@@ -15,87 +18,104 @@ const STATUSES: { value: ProjectStatus; label: string }[] = [
 function ProjectDetailContent() {
   const searchParams = useSearchParams();
   const id = Number(searchParams.get("id"));
-
-  const [project, setProject] = useState<Project | null>(null);
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [newTodoTitle, setNewTodoTitle] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  const load = useCallback(() => {
-    if (!Number.isFinite(id) || id <= 0) {
-      setError("無效 project id");
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    Promise.all([api.getProject(id), api.listTodos({ project_id: id })])
-      .then(([p, ts]) => {
-        setProject(p);
-        setTodos(ts);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
-  }, [id]);
+  const validId = Number.isFinite(id) && id > 0;
 
-  useEffect(load, [load]);
+  const {
+    data: project,
+    isLoading: projectLoading,
+    isError: projectError,
+  } = useQuery({
+    queryKey: ["project", id],
+    queryFn: () => api.getProject(id),
+    enabled: validId,
+  });
 
-  const handleCreateTodo = async (e: React.FormEvent) => {
+  const { data: todos = [], isLoading: todosLoading } = useQuery({
+    queryKey: ["project-todos", id],
+    queryFn: () => api.listTodos({ project_id: id }),
+    enabled: validId,
+  });
+
+  const createTodoMutation = useMutation({
+    mutationFn: (payload: { title: string; project_id: number }) =>
+      api.createTodo(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-todos", id] });
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      setNewTodoTitle("");
+      toast.success("已新增");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (todo: Todo) => api.updateTodo(todo.id, { done: !todo.done }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Todo[]>(["project-todos", id], (old) =>
+        old?.map((t) => (t.id === updated.id ? updated : t))
+      );
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (status: ProjectStatus) => api.updateProject(id, { status }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Project>(["project", id], updated);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const handleCreateTodo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTodoTitle.trim() || !project) return;
-    setSaving(true);
-    try {
-      const t = await api.createTodo({
-        title: newTodoTitle.trim(),
-        project_id: project.id,
-      });
-      setTodos((prev) => [t, ...prev]);
-      setNewTodoTitle("");
-      // refresh counts
-      const updated = await api.getProject(project.id);
-      setProject(updated);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
+    createTodoMutation.mutate({
+      title: newTodoTitle.trim(),
+      project_id: project.id,
+    });
   };
 
-  const handleToggle = async (todo: Todo) => {
-    try {
-      const updated = await api.updateTodo(todo.id, { done: !todo.done });
-      setTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
-      if (project) {
-        const p = await api.getProject(project.id);
-        setProject(p);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
+  const isLoading = projectLoading || todosLoading;
 
-  const handleStatusChange = async (status: ProjectStatus) => {
-    if (!project) return;
-    try {
-      const updated = await api.updateProject(project.id, { status });
-      setProject(updated);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  if (loading) return <main className="p-8">載入中…</main>;
-  if (error)
+  if (!validId) {
     return (
       <main className="p-8">
         <Link href="/projects" className="text-sm text-blue-600 hover:underline">
           ← 返回 Projects
         </Link>
-        <div className="mt-4 text-red-600">錯誤：{error}</div>
+        <div className="mt-4 text-red-600">無效 project id</div>
       </main>
     );
-  if (!project) return <main className="p-8">找不到 project</main>;
+  }
+
+  if (isLoading) {
+    return (
+      <main className="min-h-screen p-4 max-w-2xl mx-auto">
+        <div className="mb-4">
+          <Link href="/projects" className="text-sm text-blue-600 hover:underline">
+            ← 返回 Projects
+          </Link>
+        </div>
+        <Loading />
+      </main>
+    );
+  }
+
+  if (projectError || !project) {
+    return (
+      <main className="p-8">
+        <Link href="/projects" className="text-sm text-blue-600 hover:underline">
+          ← 返回 Projects
+        </Link>
+        <div className="mt-4 text-muted-foreground">找不到 project</div>
+      </main>
+    );
+  }
 
   const progress =
     project.todo_count > 0
@@ -122,12 +142,13 @@ function ProjectDetailContent() {
           {STATUSES.map((s) => (
             <button
               key={s.value}
-              onClick={() => handleStatusChange(s.value)}
+              onClick={() => statusMutation.mutate(s.value)}
               className={`px-3 py-1 rounded-full border ${
                 project.status === s.value
                   ? "bg-foreground text-background border-foreground"
                   : "border-border hover:bg-muted"
               }`}
+              aria-label={`狀態設為${s.label}`}
             >
               {s.label}
             </button>
@@ -160,7 +181,7 @@ function ProjectDetailContent() {
         />
         <button
           type="submit"
-          disabled={saving || !newTodoTitle.trim()}
+          disabled={createTodoMutation.isPending || !newTodoTitle.trim()}
           className="px-4 py-2 bg-foreground text-background rounded-md font-medium disabled:opacity-40"
         >
           加
@@ -168,9 +189,7 @@ function ProjectDetailContent() {
       </form>
 
       {todos.length === 0 ? (
-        <div className="text-center text-muted-foreground p-8 border border-dashed border-border rounded-lg">
-          未有 todo — 加個先！
-        </div>
+        <EmptyState message="未有 todo — 加個先！" />
       ) : (
         <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
           {todos.map((todo) => (
@@ -183,8 +202,9 @@ function ProjectDetailContent() {
               <input
                 type="checkbox"
                 checked={todo.done}
-                onChange={() => handleToggle(todo)}
+                onChange={() => toggleMutation.mutate(todo)}
                 className="mt-1 h-4 w-4"
+                aria-label={`標記 ${todo.title} 為${todo.done ? "未完成" : "已完成"}`}
               />
               <div className="flex-1 min-w-0">
                 <div className={todo.done ? "line-through break-words" : "break-words"}>
@@ -206,7 +226,7 @@ function ProjectDetailContent() {
 
 export default function ProjectDetailPage() {
   return (
-    <Suspense fallback={<main className="p-8">載入中…</main>}>
+    <Suspense fallback={<Loading />}>
       <ProjectDetailContent />
     </Suspense>
   );

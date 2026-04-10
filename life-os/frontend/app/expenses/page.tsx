@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Expense, type ExpenseStats } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const CATEGORIES = [
   "飲食",
@@ -30,9 +34,7 @@ function monthStartStr() {
 type MonthlyData = { year: number; month: number; total: number; count: number };
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [stats, setStats] = useState<ExpenseStats | null>(null);
-  const [monthly, setMonthly] = useState<MonthlyData[]>([]);
+  const queryClient = useQueryClient();
   const [filterCat, setFilterCat] = useState<string>("");
   const [dateFrom, setDateFrom] = useState(monthStartStr());
   const [dateTo, setDateTo] = useState(todayStr());
@@ -45,64 +47,82 @@ export default function ExpensesPage() {
   const [merchant, setMerchant] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [spentAt, setSpentAt] = useState(todayStr());
-  const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const params: Record<string, string> = {};
-      if (filterCat) params.category = filterCat;
-      if (dateFrom) params.date_from = dateFrom;
-      if (dateTo) params.date_to = dateTo;
-      const [list, s, m] = await Promise.all([
-        api.listExpenses(params),
-        api.expenseStats(params),
-        api.expenseMonthly(6),
-      ]);
-      setExpenses(list);
-      setStats(s);
-      setMonthly(m);
-    } catch {
-      /* ignore */
-    }
-  }, [filterCat, dateFrom, dateTo]);
+  // Delete confirm dialog
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const listParams: Record<string, string> = {};
+  if (filterCat) listParams.category = filterCat;
+  if (dateFrom) listParams.date_from = dateFrom;
+  if (dateTo) listParams.date_to = dateTo;
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) return;
-    setSaving(true);
-    try {
-      await api.createExpense({
-        amount: amt,
-        category,
-        description: description || undefined,
-        merchant: merchant || undefined,
-        payment_method: paymentMethod || undefined,
-        spent_at: spentAt,
-      });
+  const { data: expenses = [], isLoading: loadingExpenses } = useQuery({
+    queryKey: ["expenses", filterCat, dateFrom, dateTo],
+    queryFn: () => api.listExpenses(listParams),
+  });
+
+  const statsParams: Record<string, string> = {};
+  if (dateFrom) statsParams.date_from = dateFrom;
+  if (dateTo) statsParams.date_to = dateTo;
+
+  const { data: stats } = useQuery<ExpenseStats>({
+    queryKey: ["expenses-stats", filterCat, dateFrom, dateTo],
+    queryFn: () => api.expenseStats(statsParams),
+  });
+
+  const { data: monthly = [] } = useQuery<MonthlyData[]>({
+    queryKey: ["expenses-monthly"],
+    queryFn: () => api.expenseMonthly(6),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: {
+      amount: number;
+      category: string;
+      description?: string;
+      merchant?: string;
+      payment_method?: string;
+      spent_at: string;
+    }) => api.createExpense(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses-monthly"] });
       setAmount("");
       setDescription("");
       setMerchant("");
       setShowForm(false);
-      load();
-    } catch {
-      /* ignore */
-    } finally {
-      setSaving(false);
-    }
-  };
+      toast.success("已新增消費");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  const handleDelete = async (id: number) => {
-    try {
-      await api.deleteExpense(id);
-      load();
-    } catch {
-      /* ignore */
-    }
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteExpense(id),
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<Expense[]>(
+        ["expenses", filterCat, dateFrom, dateTo],
+        (old) => old?.filter((exp) => exp.id !== id)
+      );
+      queryClient.invalidateQueries({ queryKey: ["expenses-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses-monthly"] });
+      toast.success("已刪除");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return;
+    createMutation.mutate({
+      amount: amt,
+      category,
+      description: description || undefined,
+      merchant: merchant || undefined,
+      payment_method: paymentMethod || undefined,
+      spent_at: spentAt,
+    });
   };
 
   return (
@@ -311,10 +331,10 @@ export default function ExpensesPage() {
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={saving}
+              disabled={createMutation.isPending}
               className="flex-1 py-2 bg-foreground text-background rounded font-medium disabled:opacity-50"
             >
-              {saving ? "儲存中…" : "儲存"}
+              {createMutation.isPending ? "儲存中…" : "儲存"}
             </button>
             <button
               type="button"
@@ -329,48 +349,61 @@ export default function ExpensesPage() {
 
       {/* Expense list */}
       <section className="space-y-2">
-        {expenses.length === 0 && (
-          <p className="text-center text-muted-foreground py-8">
-            暫時冇消費記錄
-          </p>
-        )}
-        {expenses.map((exp) => (
-          <div
-            key={exp.id}
-            className="flex items-center p-3 border border-border rounded-lg"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs px-2 py-0.5 bg-muted rounded">
-                  {exp.category}
-                </span>
-                {exp.merchant && (
-                  <span className="text-sm font-medium truncate">
-                    {exp.merchant}
+        {loadingExpenses ? (
+          <Loading />
+        ) : expenses.length === 0 ? (
+          <EmptyState message="暫時冇消費記錄" />
+        ) : (
+          expenses.map((exp) => (
+            <div
+              key={exp.id}
+              className="flex items-center p-3 border border-border rounded-lg"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs px-2 py-0.5 bg-muted rounded">
+                    {exp.category}
                   </span>
-                )}
+                  {exp.merchant && (
+                    <span className="text-sm font-medium truncate">
+                      {exp.merchant}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {exp.spent_at}
+                  {exp.payment_method && ` · ${exp.payment_method}`}
+                  {exp.description && ` · ${exp.description}`}
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {exp.spent_at}
-                {exp.payment_method && ` · ${exp.payment_method}`}
-                {exp.description && ` · ${exp.description}`}
+              <div className="text-right ml-3">
+                <div className="font-bold">
+                  ${exp.amount.toLocaleString("zh-HK", { minimumFractionDigits: 2 })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(exp.id)}
+                  className="text-xs text-red-500 hover:underline mt-1"
+                  aria-label={`刪除 ${exp.merchant || exp.category} 消費`}
+                >
+                  刪除
+                </button>
               </div>
             </div>
-            <div className="text-right ml-3">
-              <div className="font-bold">
-                ${exp.amount.toLocaleString("zh-HK", { minimumFractionDigits: 2 })}
-              </div>
-              <button
-                type="button"
-                onClick={() => handleDelete(exp.id)}
-                className="text-xs text-red-500 hover:underline mt-1"
-              >
-                刪除
-              </button>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </section>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="刪除消費"
+        message="確定要刪除呢筆消費記錄？"
+        onConfirm={() => {
+          if (deleteTarget !== null) deleteMutation.mutate(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </main>
   );
 }

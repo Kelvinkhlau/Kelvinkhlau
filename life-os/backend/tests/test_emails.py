@@ -1,6 +1,6 @@
 """Email CRUD / stats / mark-read / category tests。"""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ def _seed_email(db: Session, user_id: int, **overrides) -> Email:
     """Helper — 直接喺 DB 建一封 email（唔經 Gmail sync）。"""
     defaults = dict(
         user_id=user_id,
-        gmail_message_id=f"msg-{id(overrides)}-{datetime.utcnow().timestamp()}",
+        gmail_message_id=f"msg-{id(overrides)}-{datetime.now(UTC).timestamp()}",
         gmail_thread_id="thread-1",
         subject="Test email",
         sender="Alice <alice@example.com>",
@@ -20,7 +20,7 @@ def _seed_email(db: Session, user_id: int, **overrides) -> Email:
         recipients="me@example.com",
         snippet="Preview text",
         body_text="Full body text here",
-        received_at=datetime.utcnow(),
+        received_at=datetime.now(UTC),
         is_read=False,
         has_attachment=False,
     )
@@ -168,7 +168,7 @@ def test_email_stats_with_data(
     _seed_email(
         db_session, 1,
         is_read=False,
-        received_at=datetime.utcnow() - timedelta(days=5),
+        received_at=datetime.now(UTC) - timedelta(days=5),
     )
     _classify(db_session, e1.id, "important")
     _classify(db_session, e2.id, "normal")

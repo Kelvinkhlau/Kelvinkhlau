@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
+import { toast } from "@/components/Toast";
 
 type Message = {
   role: "user" | "assistant";
@@ -89,8 +90,8 @@ export default function AssistantPage() {
           if (text) {
             setInput(text);
           }
-        } catch {
-          /* ignore */
+        } catch (err) {
+          toast.error(`語音轉錄失敗：${(err as Error).message}`);
         } finally {
           setTranscribing(false);
         }
@@ -100,7 +101,7 @@ export default function AssistantPage() {
       recorder.start();
       setRecording(true);
     } catch {
-      /* mic permission denied */
+      toast.error("無法存取麥克風 — 請允許權限");
     }
   }, []);
 

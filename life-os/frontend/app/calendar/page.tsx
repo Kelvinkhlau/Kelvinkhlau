@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type CalendarEvent } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
 
 function formatTime(dateStr: string, allDay: boolean): string {
   if (allDay) return "全日";
@@ -42,39 +45,24 @@ function groupByDate(
 }
 
 export default function CalendarPage() {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [days, setDays] = useState(14);
 
-  const load = () => {
-    setLoading(true);
-    api
-      .listCalendarEvents({ days })
-      .then(setEvents)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const { data: events = [], isLoading } = useQuery({
+    queryKey: ["calendar", days],
+    queryFn: () => api.listCalendarEvents({ days }),
+  });
 
-  useEffect(load, [days]);
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setMessage(null);
-    try {
-      const result = await api.syncCalendar({ days: 30 });
-      setMessage(
+  const syncMutation = useMutation({
+    mutationFn: () => api.syncCalendar({ days: 30 }),
+    onSuccess: (result) => {
+      toast.success(
         `同步完成：拉咗 ${result.fetched} 個 event，新 ${result.new} 個，更新 ${result.updated} 個`
       );
-      load();
-    } catch (e) {
-      setMessage(`同步失敗：${(e as Error).message}`);
-    } finally {
-      setSyncing(false);
-    }
-  };
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
+    onError: (e) => toast.error(`同步失敗：${(e as Error).message}`),
+  });
 
   const grouped = groupByDate(events);
 
@@ -89,16 +77,17 @@ export default function CalendarPage() {
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <button
-          onClick={handleSync}
-          disabled={syncing}
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending}
           className="px-4 py-2 bg-foreground text-background rounded-md font-medium disabled:opacity-40"
         >
-          {syncing ? "同步中…" : "Sync Google Calendar"}
+          {syncMutation.isPending ? "同步中…" : "Sync Google Calendar"}
         </button>
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
           className="px-3 py-2 border border-border rounded-md bg-background text-sm"
+          aria-label="顯示日數"
         >
           <option value={7}>未來 7 日</option>
           <option value={14}>未來 14 日</option>
@@ -106,24 +95,10 @@ export default function CalendarPage() {
         </select>
       </div>
 
-      {message && (
-        <div className="p-3 mb-3 text-sm text-muted-foreground bg-muted rounded">
-          {message}
-        </div>
-      )}
-
-      {error && (
-        <div className="p-3 mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-center text-muted-foreground p-8">載入中…</div>
+      {isLoading ? (
+        <Loading />
       ) : events.length === 0 ? (
-        <div className="text-center text-muted-foreground p-8 border border-dashed border-border rounded-lg">
-          冇 upcoming events — 試下撳 Sync
-        </div>
+        <EmptyState message="冇 upcoming events — 試下撳 Sync" />
       ) : (
         <div className="space-y-6">
           {grouped.map((group) => (

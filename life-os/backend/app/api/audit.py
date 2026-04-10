@@ -38,7 +38,8 @@ async def list_audit_logs(
     """列出審計記錄 — 按時間倒序。"""
     stmt = (
         select(AuditLog)
-        .order_by(desc(AuditLog.created_at))
+        .where(AuditLog.user_id == user.id)
+        .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
         .limit(limit)
         .offset(offset)
     )

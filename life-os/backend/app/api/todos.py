@@ -1,6 +1,6 @@
 """Todo API routes — 單用戶系統，簡單 CRUD + toggle done。"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import asc, desc, select
@@ -109,7 +109,7 @@ async def update_todo(
         todo.due_at = payload.due_at
     if payload.done is not None and payload.done != todo.done:
         todo.done = payload.done
-        todo.completed_at = datetime.utcnow() if payload.done else None
+        todo.completed_at = datetime.now(UTC) if payload.done else None
     # project_id 用 model_fields_set 區分 "未提供" 同 "明確 set 做 null"
     if "project_id" in payload.model_fields_set:
         _validate_project(db, user.id, payload.project_id)

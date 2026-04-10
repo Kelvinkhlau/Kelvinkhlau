@@ -36,5 +36,8 @@ class EmailDetail(EmailOut):
     recipients: str
 
 
+from typing import Literal
+
+
 class CategoryUpdate(BaseModel):
-    category: str  # important / normal / promotional
+    category: Literal["important", "normal", "promotional"]

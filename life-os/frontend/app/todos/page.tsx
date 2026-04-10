@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Todo } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const PRIORITIES: { value: "low" | "medium" | "high"; label: string; color: string }[] =
   [
@@ -12,54 +16,54 @@ const PRIORITIES: { value: "low" | "medium" | "high"; label: string; color: stri
   ];
 
 export default function TodosPage() {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">("medium");
   const [showDone, setShowDone] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    api
-      .listTodos()
-      .then(setTodos)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const { data: todos = [], isLoading } = useQuery({
+    queryKey: ["todos"],
+    queryFn: () => api.listTodos(),
+  });
 
-  useEffect(load, []);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
-    try {
-      await api.createTodo({ title: newTitle.trim(), priority: newPriority });
+  const createMutation = useMutation({
+    mutationFn: (payload: { title: string; priority: "low" | "medium" | "high" }) =>
+      api.createTodo(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos"] });
       setNewTitle("");
       setNewPriority("medium");
-      load();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
+      toast.success("已新增");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  const handleToggle = async (todo: Todo) => {
-    try {
-      const updated = await api.updateTodo(todo.id, { done: !todo.done });
-      setTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
+  const toggleMutation = useMutation({
+    mutationFn: (todo: Todo) => api.updateTodo(todo.id, { done: !todo.done }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Todo[]>(["todos"], (old) =>
+        old?.map((t) => (t.id === updated.id ? updated : t))
+      );
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("確定要刪除？")) return;
-    try {
-      await api.deleteTodo(id);
-      setTodos((prev) => prev.filter((t) => t.id !== id));
-    } catch (err) {
-      setError((err as Error).message);
-    }
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteTodo(id),
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<Todo[]>(["todos"], (old) =>
+        old?.filter((t) => t.id !== id)
+      );
+      toast.success("已刪除");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+    createMutation.mutate({ title: newTitle.trim(), priority: newPriority });
   };
 
   const visible = todos.filter((t) => (showDone ? true : !t.done));
@@ -86,6 +90,7 @@ export default function TodosPage() {
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="要做咩？"
           className="flex-1 px-3 py-2 border border-border rounded-md bg-background"
+          aria-label="新 todo 標題"
         />
         <select
           value={newPriority}
@@ -93,6 +98,7 @@ export default function TodosPage() {
             setNewPriority(e.target.value as "low" | "medium" | "high")
           }
           className="px-3 py-2 border border-border rounded-md bg-background text-sm"
+          aria-label="優先級"
         >
           {PRIORITIES.map((p) => (
             <option key={p.value} value={p.value}>
@@ -102,7 +108,7 @@ export default function TodosPage() {
         </select>
         <button
           type="submit"
-          disabled={!newTitle.trim()}
+          disabled={!newTitle.trim() || createMutation.isPending}
           className="px-4 py-2 bg-foreground text-background rounded-md font-medium disabled:opacity-40"
         >
           加
@@ -126,18 +132,12 @@ export default function TodosPage() {
         </span>
       </div>
 
-      {error && (
-        <div className="p-3 mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-center text-muted-foreground p-8">載入中…</div>
+      {isLoading ? (
+        <Loading />
       ) : visible.length === 0 ? (
-        <div className="text-center text-muted-foreground p-8 border border-dashed border-border rounded-lg">
-          {todos.length === 0 ? "仲未有 todo — 加個先！" : "冇嘢要做 🎉"}
-        </div>
+        <EmptyState
+          message={todos.length === 0 ? "仲未有 todo — 加個先！" : "冇嘢要做"}
+        />
       ) : (
         <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
           {visible.map((todo) => {
@@ -152,8 +152,9 @@ export default function TodosPage() {
                 <input
                   type="checkbox"
                   checked={todo.done}
-                  onChange={() => handleToggle(todo)}
+                  onChange={() => toggleMutation.mutate(todo)}
                   className="mt-1 h-4 w-4"
+                  aria-label={`標記 ${todo.title} 為${todo.done ? "未完成" : "已完成"}`}
                 />
                 <div className="flex-1 min-w-0">
                   <div
@@ -168,7 +169,7 @@ export default function TodosPage() {
                   )}
                   {todo.due_at && (
                     <div className="text-xs text-muted-foreground mt-1">
-                      📅 {new Date(todo.due_at).toLocaleString("zh-HK")}
+                      {new Date(todo.due_at).toLocaleString("zh-HK")}
                     </div>
                   )}
                 </div>
@@ -176,9 +177,9 @@ export default function TodosPage() {
                   {pri?.label}
                 </span>
                 <button
-                  onClick={() => handleDelete(todo.id)}
+                  onClick={() => setDeleteTarget(todo.id)}
                   className="text-xs text-red-600 hover:underline"
-                  title="刪除"
+                  aria-label={`刪除 ${todo.title}`}
                 >
                   刪
                 </button>
@@ -187,6 +188,17 @@ export default function TodosPage() {
           })}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="刪除 Todo"
+        message="確定要刪除呢個 todo？"
+        onConfirm={() => {
+          if (deleteTarget !== null) deleteMutation.mutate(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </main>
   );
 }

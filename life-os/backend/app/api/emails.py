@@ -1,14 +1,14 @@
 """Email API routes。"""
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from app.deps import DbSession, current_user
+from app.deps import CurrentUser, DbSession, current_user
 from app.models.email import Email, EmailClassification
 from app.models.user import User
 from app.schemas.email import CategoryUpdate, EmailOut
@@ -94,7 +94,7 @@ async def email_stats(db: DbSession) -> EmailStats:
     ).scalar_one()
 
     # 今日（本地 00:00 — 為簡單 UTC cut-off）
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     today_new = db.execute(
         select(func.count())
         .select_from(Email)
@@ -120,12 +120,18 @@ async def email_stats(db: DbSession) -> EmailStats:
     )
 
 
-@router.get("/{email_id}")
-async def get_email(email_id: int, db: DbSession) -> dict:
-    """睇 email 詳情 — 包含 prev_id / next_id 方便前後導航。"""
+def _get_user_email(db, email_id: int, user: User) -> Email:
+    """攞 email 並驗證 user ownership。"""
     email = db.get(Email, email_id)
-    if email is None:
+    if email is None or email.user_id != user.id:
         raise HTTPException(status_code=404, detail="Email not found")
+    return email
+
+
+@router.get("/{email_id}")
+async def get_email(email_id: int, user: CurrentUser, db: DbSession) -> dict:
+    """睇 email 詳情 — 包含 prev_id / next_id 方便前後導航。"""
+    email = _get_user_email(db, email_id, user)
 
     # 上一封（時間較新）
     prev_row = db.execute(
@@ -174,11 +180,9 @@ async def get_email(email_id: int, db: DbSession) -> dict:
 
 
 @router.put("/{email_id}/read")
-async def mark_read(email_id: int, db: DbSession, read: bool = True) -> dict:
+async def mark_read(email_id: int, user: CurrentUser, db: DbSession, read: bool = True) -> dict:
     """標記 email 為已讀 / 未讀。"""
-    email = db.get(Email, email_id)
-    if email is None:
-        raise HTTPException(status_code=404, detail="Email not found")
+    email = _get_user_email(db, email_id, user)
     email.is_read = read
     db.commit()
     return {"ok": True, "is_read": read}
@@ -186,12 +190,10 @@ async def mark_read(email_id: int, db: DbSession, read: bool = True) -> dict:
 
 @router.put("/{email_id}/category")
 async def update_category(
-    email_id: int, payload: CategoryUpdate, db: DbSession
+    email_id: int, payload: CategoryUpdate, user: CurrentUser, db: DbSession
 ) -> dict:
     """用戶修正 AI 分類。"""
-    email = db.get(Email, email_id)
-    if email is None:
-        raise HTTPException(status_code=404, detail="Email not found")
+    email = _get_user_email(db, email_id, user)
 
     classification = email.classification
     if classification is None:
@@ -203,23 +205,21 @@ async def update_category(
             ai_reason=None,
             ai_model="manual",
             user_category=payload.category,
-            user_corrected_at=datetime.utcnow(),
+            user_corrected_at=datetime.now(UTC),
         )
         db.add(classification)
     else:
         classification.user_category = payload.category
-        classification.user_corrected_at = datetime.utcnow()
+        classification.user_corrected_at = datetime.now(UTC)
 
     db.commit()
     return {"ok": True, "final_category": payload.category}
 
 
 @router.put("/{email_id}/archive")
-async def archive_email(email_id: int, db: DbSession, archive: bool = True) -> dict:
+async def archive_email(email_id: int, user: CurrentUser, db: DbSession, archive: bool = True) -> dict:
     """Archive / un-archive 一封 email。"""
-    email = db.get(Email, email_id)
-    if email is None:
-        raise HTTPException(status_code=404, detail="Email not found")
+    email = _get_user_email(db, email_id, user)
     email.is_archived = archive
     db.commit()
     return {"ok": True, "is_archived": archive}

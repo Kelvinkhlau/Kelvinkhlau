@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, type EmailDetail } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading } from "@/components/Loading";
 
 const CATEGORIES = [
   { value: "important", label: "重要" },
@@ -82,80 +85,67 @@ function EmailDetailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const id = Number(searchParams.get("id"));
-
-  const [email, setEmail] = useState<EmailDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [currentCategory, setCurrentCategory] = useState<string | null>(null);
-  const [muting, setMuting] = useState(false);
 
-  useEffect(() => {
-    if (!Number.isFinite(id) || id <= 0) {
-      setError("無效 email id");
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    api
-      .getEmail(id)
-      .then((e) => {
-        setEmail(e);
-        setCurrentCategory(e.classification?.final_category ?? null);
-        if (!e.is_read) {
-          api.markRead(id, true).catch(() => {});
-        }
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [id]);
+  const { data: email, isLoading, error } = useQuery({
+    queryKey: ["email", id],
+    queryFn: async () => {
+      const e = await api.getEmail(id);
+      setCurrentCategory(e.classification?.final_category ?? null);
+      if (!e.is_read) {
+        api.markRead(id, true).catch(() => {});
+      }
+      return e;
+    },
+    enabled: Number.isFinite(id) && id > 0,
+  });
 
-  async function handleCategoryChange(category: string) {
-    if (!email || saving) return;
-    setSaving(true);
-    try {
-      const res = await api.updateCategory(email.id, category);
-      setCurrentCategory(res.final_category);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const categoryMutation = useMutation({
+    mutationFn: (category: string) => api.updateCategory(id, category),
+    onSuccess: (res) => setCurrentCategory(res.final_category),
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  async function handleMuteSender() {
-    if (!email || muting) return;
-    setMuting(true);
-    try {
-      await api.addMuted({
-        email: email.sender_email,
-        name: email.sender,
+  const muteMutation = useMutation({
+    mutationFn: () =>
+      api.addMuted({
+        email: email!.sender_email,
+        name: email!.sender,
         reason: "從 inbox 封鎖",
-      });
-      // Navigate to next email or back to inbox
-      if (email.next_id) {
+      }),
+    onSuccess: () => {
+      toast.success("已封鎖寄件者");
+      if (email?.next_id) {
         router.push(`/inbox/detail?id=${email.next_id}`);
       } else {
         router.push("/inbox");
       }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setMuting(false);
-    }
-  }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  if (loading) return <main className="p-8">載入中…</main>;
-  if (error)
+  if (!Number.isFinite(id) || id <= 0) {
     return (
       <main className="p-8">
         <Link href="/inbox" className="text-sm text-blue-600 hover:underline">
           ← 返回 inbox
         </Link>
-        <div className="mt-4 text-red-600">錯誤：{error}</div>
+        <div className="mt-4 text-red-600">無效 email id</div>
       </main>
     );
+  }
+
+  if (isLoading) return <Loading />;
+  if (error) {
+    return (
+      <main className="p-8">
+        <Link href="/inbox" className="text-sm text-blue-600 hover:underline">
+          ← 返回 inbox
+        </Link>
+        <div className="mt-4 text-red-600">錯誤：{(error as Error).message}</div>
+      </main>
+    );
+  }
   if (!email) return <main className="p-8">找不到 email</main>;
 
   const receivedAt = new Date(email.received_at);
@@ -163,7 +153,7 @@ function EmailDetailContent() {
 
   return (
     <main className="min-h-screen p-4 max-w-3xl mx-auto">
-      {/* Navigation bar: back + prev/next */}
+      {/* Navigation bar */}
       <div className="flex items-center justify-between mb-4">
         <Link href="/inbox" className="text-sm text-blue-600 hover:underline">
           ← 返回 inbox
@@ -225,8 +215,8 @@ function EmailDetailContent() {
             {CATEGORIES.map((c) => (
               <button
                 key={c.value}
-                disabled={saving}
-                onClick={() => handleCategoryChange(c.value)}
+                disabled={categoryMutation.isPending}
+                onClick={() => categoryMutation.mutate(c.value)}
                 className={`text-sm px-3 py-1 rounded-full border disabled:opacity-50 ${
                   currentCategory === c.value
                     ? "bg-foreground text-background border-foreground"
@@ -236,14 +226,13 @@ function EmailDetailContent() {
                 {c.label}
               </button>
             ))}
-            {/* 封鎖寄件者按鈕 */}
             <button
-              onClick={handleMuteSender}
-              disabled={muting}
+              onClick={() => muteMutation.mutate()}
+              disabled={muteMutation.isPending}
               className="text-sm px-3 py-1 rounded-full border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 ml-2"
               title="封鎖此寄件者 — 以後嘅 email 自動 archive"
             >
-              {muting ? "封鎖中…" : "封鎖寄件者"}
+              {muteMutation.isPending ? "封鎖中…" : "封鎖寄件者"}
             </button>
           </div>
           {email.classification?.ai_reason && (
@@ -275,7 +264,7 @@ function EmailDetailContent() {
 
 export default function EmailDetailPage() {
   return (
-    <Suspense fallback={<main className="p-8">載入中…</main>}>
+    <Suspense fallback={<Loading />}>
       <EmailDetailContent />
     </Suspense>
   );

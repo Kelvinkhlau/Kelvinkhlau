@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api, type AuditLogEntry } from "@/lib/api";
+import { Loading } from "@/components/Loading";
 
 const ACTION_COLORS: Record<string, string> = {
   login: "text-green-600 bg-green-100",
@@ -12,34 +14,21 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export default function AuditPage() {
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [filterAction, setFilterAction] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: Record<string, string | number> = { limit: 200 };
-      if (filterAction) params.action = filterAction;
-      const data = await api.listAuditLogs(
-        params as Parameters<typeof api.listAuditLogs>[0]
-      );
-      setLogs(data);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [filterAction]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: logs = [], isLoading } = useQuery({
+    queryKey: ["audit", filterAction],
+    queryFn: () =>
+      api.listAuditLogs({
+        limit: 200,
+        ...(filterAction ? { action: filterAction } : {}),
+      }),
+  });
 
   return (
     <main className="min-h-screen max-w-2xl mx-auto p-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">🔒 審計記錄</h1>
+        <h1 className="text-xl font-bold">審計記錄</h1>
         <Link href="/" className="text-sm text-blue-600 hover:underline">
           ← 首頁
         </Link>
@@ -51,6 +40,7 @@ export default function AuditPage() {
           value={filterAction}
           onChange={(e) => setFilterAction(e.target.value)}
           className="px-2 py-1 text-sm border border-border rounded bg-background"
+          aria-label="篩選動作類型"
         >
           <option value="">全部動作</option>
           <option value="login">登入</option>
@@ -58,14 +48,14 @@ export default function AuditPage() {
           <option value="update">更新</option>
           <option value="delete">刪除</option>
         </select>
-        {loading && (
+        {isLoading && (
           <span className="text-sm text-muted-foreground">載入中…</span>
         )}
       </div>
 
       {/* Log list */}
       <section className="space-y-2">
-        {logs.length === 0 && !loading && (
+        {logs.length === 0 && !isLoading && (
           <p className="text-center text-muted-foreground py-8">
             暫時冇審計記錄
           </p>

@@ -1,69 +1,79 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Idea } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export default function IdeasPage() {
-  const [ideas, setIdeas] = useState<Idea[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [newTitle, setNewTitle] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    api
-      .listIdeas({
+  const { data: ideas = [], isLoading } = useQuery({
+    queryKey: ["ideas", { archived: showArchived, q: search || undefined }],
+    queryFn: () =>
+      api.listIdeas({
         archived: showArchived,
         q: search || undefined,
-      })
-      .then(setIdeas)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+      }),
+  });
 
-  useEffect(load, [showArchived, search]);
+  const createMutation = useMutation({
+    mutationFn: (payload: { title: string }) => api.createIdea(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ideas"] });
+      setNewTitle("");
+      toast.success("已新增");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const pinMutation = useMutation({
+    mutationFn: (idea: Idea) =>
+      api.updateIdea(idea.id, { pinned: !idea.pinned }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Idea[]>(
+        ["ideas", { archived: showArchived, q: search || undefined }],
+        (old) => old?.map((i) => (i.id === updated.id ? updated : i))
+      );
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (idea: Idea) =>
+      api.updateIdea(idea.id, { archived: !idea.archived }),
+    onSuccess: (_, idea) => {
+      queryClient.setQueryData<Idea[]>(
+        ["ideas", { archived: showArchived, q: search || undefined }],
+        (old) => old?.filter((i) => i.id !== idea.id)
+      );
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteIdea(id),
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<Idea[]>(
+        ["ideas", { archived: showArchived, q: search || undefined }],
+        (old) => old?.filter((i) => i.id !== id)
+      );
+      toast.success("已刪除");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    try {
-      await api.createIdea({ title: newTitle.trim() });
-      setNewTitle("");
-      load();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const handlePin = async (idea: Idea) => {
-    try {
-      const updated = await api.updateIdea(idea.id, { pinned: !idea.pinned });
-      setIdeas((prev) => prev.map((i) => (i.id === idea.id ? updated : i)));
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const handleArchive = async (idea: Idea) => {
-    try {
-      await api.updateIdea(idea.id, { archived: !idea.archived });
-      setIdeas((prev) => prev.filter((i) => i.id !== idea.id));
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("確定要刪除？")) return;
-    try {
-      await api.deleteIdea(id);
-      setIdeas((prev) => prev.filter((i) => i.id !== id));
-    } catch (err) {
-      setError((err as Error).message);
-    }
+    createMutation.mutate({ title: newTitle.trim() });
   };
 
   return (
@@ -89,7 +99,7 @@ export default function IdeasPage() {
         />
         <button
           type="submit"
-          disabled={!newTitle.trim()}
+          disabled={!newTitle.trim() || createMutation.isPending}
           className="px-4 py-2 bg-foreground text-background rounded-md font-medium disabled:opacity-40"
         >
           加
@@ -117,18 +127,12 @@ export default function IdeasPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="p-3 mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-center text-muted-foreground p-8">載入中…</div>
+      {isLoading ? (
+        <Loading />
       ) : ideas.length === 0 ? (
-        <div className="text-center text-muted-foreground p-8 border border-dashed border-border rounded-lg">
-          {search ? "搵唔到嘢" : "仲未有 idea — 加個先！"}
-        </div>
+        <EmptyState
+          message={search ? "搵唔到嘢" : "仲未有 idea — 加個先！"}
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {ideas.map((idea) => (
@@ -172,24 +176,27 @@ export default function IdeasPage() {
 
               <div className="flex items-center gap-2 mt-auto pt-2 text-xs">
                 <button
-                  onClick={() => handlePin(idea)}
+                  onClick={() => pinMutation.mutate(idea)}
                   className={`hover:underline ${
                     idea.pinned ? "text-blue-600" : "text-muted-foreground"
                   }`}
+                  aria-label={idea.pinned ? `取消釘選 ${idea.title}` : `釘選 ${idea.title}`}
                 >
                   {idea.pinned ? "取消釘選" : "釘選"}
                 </button>
                 <span className="text-muted-foreground">·</span>
                 <button
-                  onClick={() => handleArchive(idea)}
+                  onClick={() => archiveMutation.mutate(idea)}
                   className="text-muted-foreground hover:underline"
+                  aria-label={idea.archived ? `取消封存 ${idea.title}` : `封存 ${idea.title}`}
                 >
                   {idea.archived ? "取消封存" : "封存"}
                 </button>
                 <span className="text-muted-foreground">·</span>
                 <button
-                  onClick={() => handleDelete(idea.id)}
+                  onClick={() => setDeleteTarget(idea.id)}
                   className="text-red-600 hover:underline"
+                  aria-label={`刪除 ${idea.title}`}
                 >
                   刪
                 </button>
@@ -201,6 +208,17 @@ export default function IdeasPage() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="刪除 Idea"
+        message="確定要刪除呢個 idea？"
+        onConfirm={() => {
+          if (deleteTarget !== null) deleteMutation.mutate(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </main>
   );
 }

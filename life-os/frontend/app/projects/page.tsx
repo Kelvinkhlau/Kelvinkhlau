@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Project, type ProjectStatus } from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { Loading, EmptyState } from "@/components/Loading";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const STATUSES: { value: ProjectStatus; label: string }[] = [
   { value: "active", label: "進行中" },
@@ -12,43 +16,42 @@ const STATUSES: { value: ProjectStatus; label: string }[] = [
 ];
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [newName, setNewName] = useState("");
   const [filter, setFilter] = useState<ProjectStatus | "all">("active");
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    api
-      .listProjects(filter === "all" ? undefined : { status: filter })
-      .then(setProjects)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const { data: projects = [], isLoading } = useQuery({
+    queryKey: ["projects", filter],
+    queryFn: () =>
+      api.listProjects(filter === "all" ? undefined : { status: filter }),
+  });
 
-  useEffect(load, [filter]);
+  const createMutation = useMutation({
+    mutationFn: (payload: { name: string }) => api.createProject(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setNewName("");
+      toast.success("已新增");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteProject(id),
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<Project[]>(["projects", filter], (old) =>
+        old?.filter((p) => p.id !== id)
+      );
+      toast.success("已刪除");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    try {
-      await api.createProject({ name: newName.trim() });
-      setNewName("");
-      load();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("確定要刪除？佢下面嘅 todos 會變成無 project 嘅孤兒。")) return;
-    try {
-      await api.deleteProject(id);
-      setProjects((prev) => prev.filter((p) => p.id !== id));
-    } catch (err) {
-      setError((err as Error).message);
-    }
+    createMutation.mutate({ name: newName.trim() });
   };
 
   return (
@@ -74,7 +77,7 @@ export default function ProjectsPage() {
         />
         <button
           type="submit"
-          disabled={!newName.trim()}
+          disabled={!newName.trim() || createMutation.isPending}
           className="px-4 py-2 bg-foreground text-background rounded-md font-medium disabled:opacity-40"
         >
           加
@@ -108,18 +111,10 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {error && (
-        <div className="p-3 mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-center text-muted-foreground p-8">載入中…</div>
+      {isLoading ? (
+        <Loading />
       ) : projects.length === 0 ? (
-        <div className="text-center text-muted-foreground p-8 border border-dashed border-border rounded-lg">
-          仲未有 project — 加個先！
-        </div>
+        <EmptyState message="仲未有 project — 加個先！" />
       ) : (
         <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
           {projects.map((project) => {
@@ -171,9 +166,9 @@ export default function ProjectsPage() {
                     </Link>
                   </div>
                   <button
-                    onClick={() => handleDelete(project.id)}
+                    onClick={() => setDeleteTarget(project.id)}
                     className="text-xs text-red-600 hover:underline shrink-0"
-                    title="刪除"
+                    aria-label={`刪除 ${project.name}`}
                   >
                     刪
                   </button>
@@ -183,6 +178,17 @@ export default function ProjectsPage() {
           })}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="刪除 Project"
+        message="確定要刪除？佢下面嘅 todos 會變成無 project 嘅孤兒。"
+        onConfirm={() => {
+          if (deleteTarget !== null) deleteMutation.mutate(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </main>
   );
 }

@@ -1,6 +1,6 @@
 """Data export + import API — JSON 備份 / 還原。"""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -48,7 +48,7 @@ def _serialize(obj) -> dict:
 async def export_all(user: CurrentUser, db: DbSession) -> JSONResponse:
     """匯出所有用戶數據為 JSON — 用作備份或遷移。"""
     data = {
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": datetime.now(UTC).isoformat(),
         "user": {"email": user.email, "name": user.name},
         "todos": [
             _serialize(t)
