@@ -44,6 +44,17 @@ export type EmailDetail = Email & {
   body_text: string;
   body_html: string | null;
   recipients: string;
+  is_archived: boolean;
+  prev_id: number | null;
+  next_id: number | null;
+};
+
+export type MutedSender = {
+  id: number;
+  email: string;
+  name: string;
+  reason: string | null;
+  created_at: string;
 };
 
 export type GmailStatus =
@@ -469,6 +480,23 @@ export const api = {
     return request<CalendarSyncResult>(`/calendar/sync${suffix}`, {
       method: "POST",
     });
+  },
+
+  archiveEmail: (id: number, archive = true) =>
+    request<{ ok: boolean; is_archived: boolean }>(
+      `/emails/${id}/archive?archive=${archive}`,
+      { method: "PUT" },
+    ),
+
+  // Muted senders (封鎖寄件者)
+  listMuted: () => request<MutedSender[]>("/muted"),
+  addMuted: (payload: { email: string; name?: string; reason?: string }) =>
+    request<MutedSender>("/muted", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteMuted: async (id: number): Promise<void> => {
+    await rawFetch(`/muted/${id}`, { method: "DELETE" });
   },
 
   // VIP senders

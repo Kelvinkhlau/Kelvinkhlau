@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import assistant, audit, auth, calendar, emails, expenses, export, ideas, notes, projects, report, todos, vip, voice, ws
+from app.api import assistant, audit, auth, calendar, emails, expenses, export, ideas, muted, notes, projects, report, todos, vip, voice, ws
 from app.config import get_settings
 from app.services.ws_manager import manager as ws_manager
 from app.workers.scheduler import start_scheduler, stop_scheduler
@@ -53,6 +53,7 @@ app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(ideas.router, prefix="/api/ideas", tags=["ideas"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(vip.router, prefix="/api/vip", tags=["vip"])
+app.include_router(muted.router, prefix="/api/muted", tags=["muted"])
 app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(voice.router, prefix="/api/voice", tags=["voice"])

@@ -25,6 +25,7 @@ class EmailOut(BaseModel):
     snippet: str
     received_at: datetime
     is_read: bool
+    is_archived: bool = False
     has_attachment: bool
     classification: EmailClassificationOut | None
 

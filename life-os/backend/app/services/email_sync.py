@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.muted import is_muted
 from app.api.vip import is_vip
 from app.db import SessionLocal
 from app.models.email import Email, EmailClassification
@@ -17,6 +18,27 @@ from app.services.gmail_client import GmailClient, ParsedMessage
 from app.services.ws_manager import manager as ws_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _get_recent_corrections(db: Session, limit: int = 5) -> list[dict]:
+    """撈最近用戶手動修正過嘅分類，做 few-shot examples 俾 AI 學習。"""
+    stmt = (
+        select(Email.subject, Email.sender, Email.snippet, EmailClassification.user_category)
+        .join(EmailClassification, EmailClassification.email_id == Email.id)
+        .where(EmailClassification.user_category.isnot(None))
+        .order_by(EmailClassification.user_corrected_at.desc())
+        .limit(limit)
+    )
+    rows = db.execute(stmt).all()
+    return [
+        {
+            "subject": row.subject,
+            "sender": row.sender,
+            "snippet": (row.snippet or "")[:200],
+            "category": row.user_category,
+        }
+        for row in rows
+    ]
 
 
 @dataclass
@@ -90,7 +112,11 @@ def sync_for_user(
         new_count += 1
         new_emails.append(email)
 
-        # 分類：VIP → 直接 "important"；否則用 AI
+        # 封鎖寄件者 → 自動 archive
+        if is_muted(db, user.id, parsed.sender_email):
+            email.is_archived = True
+
+        # 分類：VIP → 直接 "important"；封鎖 → "promotional"；否則用 AI
         if classify:
             try:
                 if is_vip(db, user.id, parsed.sender_email):
@@ -101,11 +127,22 @@ def sync_for_user(
                         ai_reason="VIP 白名單",
                         ai_model="vip-rule",
                     )
+                elif is_muted(db, user.id, parsed.sender_email):
+                    classification = EmailClassification(
+                        email_id=email.id,
+                        ai_category="promotional",
+                        ai_confidence=1.0,
+                        ai_reason="封鎖寄件者",
+                        ai_model="muted-rule",
+                    )
                 else:
+                    # 撈最近嘅用戶修正做 few-shot examples
+                    examples = _get_recent_corrections(db, limit=5)
                     result = ai_classifier.classify_email(
                         subject=parsed.subject,
                         sender=parsed.sender,
                         snippet=parsed.snippet or parsed.body_text[:500],
+                        examples=examples,
                     )
                     classification = EmailClassification(
                         email_id=email.id,

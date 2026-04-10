@@ -51,6 +51,7 @@ class Email(Base):
     # Metadata
     received_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
     is_read: Mapped[bool] = mapped_column(default=False, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(default=False, nullable=False)
     has_attachment: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

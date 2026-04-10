@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, type EmailDetail } from "@/lib/api";
@@ -18,7 +19,6 @@ function EmailHtmlViewer({ html }: { html: string }) {
   const adjustHeight = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe?.contentDocument?.body) return;
-    // 加少少 buffer 避免出現 scrollbar
     iframe.style.height =
       iframe.contentDocument.body.scrollHeight + 16 + "px";
   }, []);
@@ -30,7 +30,6 @@ function EmailHtmlViewer({ html }: { html: string }) {
     const doc = iframe.contentDocument;
     if (!doc) return;
 
-    // 寫入 HTML 內容，加 base target=_blank 令連結喺新 tab 開
     doc.open();
     doc.write(`<!DOCTYPE html>
 <html><head>
@@ -44,7 +43,6 @@ function EmailHtmlViewer({ html }: { html: string }) {
 </head><body>${html}</body></html>`);
     doc.close();
 
-    // 等圖片載入完再調整高度
     const images = doc.querySelectorAll("img");
     let loaded = 0;
     const total = images.length;
@@ -65,7 +63,6 @@ function EmailHtmlViewer({ html }: { html: string }) {
       });
     }
 
-    // fallback: 1 秒後再調一次（防某啲圖片 lazy load）
     const timer = setTimeout(adjustHeight, 1000);
     return () => clearTimeout(timer);
   }, [html, adjustHeight]);
@@ -83,6 +80,7 @@ function EmailHtmlViewer({ html }: { html: string }) {
 
 function EmailDetailContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const id = Number(searchParams.get("id"));
 
   const [email, setEmail] = useState<EmailDetail | null>(null);
@@ -90,6 +88,7 @@ function EmailDetailContent() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [currentCategory, setCurrentCategory] = useState<string | null>(null);
+  const [muting, setMuting] = useState(false);
 
   useEffect(() => {
     if (!Number.isFinite(id) || id <= 0) {
@@ -97,16 +96,15 @@ function EmailDetailContent() {
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setError(null);
     api
       .getEmail(id)
       .then((e) => {
         setEmail(e);
         setCurrentCategory(e.classification?.final_category ?? null);
-        // Auto mark as read on open
         if (!e.is_read) {
-          api.markRead(id, true).catch(() => {
-            // 靜默失敗 — 唔影響睇 email
-          });
+          api.markRead(id, true).catch(() => {});
         }
       })
       .catch((e) => setError(e.message))
@@ -126,6 +124,28 @@ function EmailDetailContent() {
     }
   }
 
+  async function handleMuteSender() {
+    if (!email || muting) return;
+    setMuting(true);
+    try {
+      await api.addMuted({
+        email: email.sender_email,
+        name: email.sender,
+        reason: "從 inbox 封鎖",
+      });
+      // Navigate to next email or back to inbox
+      if (email.next_id) {
+        router.push(`/inbox/detail?id=${email.next_id}`);
+      } else {
+        router.push("/inbox");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setMuting(false);
+    }
+  }
+
   if (loading) return <main className="p-8">載入中…</main>;
   if (error)
     return (
@@ -139,13 +159,43 @@ function EmailDetailContent() {
   if (!email) return <main className="p-8">找不到 email</main>;
 
   const receivedAt = new Date(email.received_at);
+  const isPromo = currentCategory === "promotional";
 
   return (
     <main className="min-h-screen p-4 max-w-3xl mx-auto">
-      <div className="mb-4">
+      {/* Navigation bar: back + prev/next */}
+      <div className="flex items-center justify-between mb-4">
         <Link href="/inbox" className="text-sm text-blue-600 hover:underline">
           ← 返回 inbox
         </Link>
+        <div className="flex gap-2">
+          {email.prev_id ? (
+            <Link
+              href={`/inbox/detail?id=${email.prev_id}`}
+              className="px-3 py-1 text-sm border border-border rounded hover:bg-muted"
+              title="上一封（較新）"
+            >
+              ← 上一封
+            </Link>
+          ) : (
+            <span className="px-3 py-1 text-sm border border-border rounded opacity-30">
+              ← 上一封
+            </span>
+          )}
+          {email.next_id ? (
+            <Link
+              href={`/inbox/detail?id=${email.next_id}`}
+              className="px-3 py-1 text-sm border border-border rounded hover:bg-muted"
+              title="下一封（較舊）"
+            >
+              下一封 →
+            </Link>
+          ) : (
+            <span className="px-3 py-1 text-sm border border-border rounded opacity-30">
+              下一封 →
+            </span>
+          )}
+        </div>
       </div>
 
       <article className="space-y-4">
@@ -171,7 +221,7 @@ function EmailDetailContent() {
 
         <section>
           <div className="text-sm font-medium mb-2">分類</div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             {CATEGORIES.map((c) => (
               <button
                 key={c.value}
@@ -186,11 +236,25 @@ function EmailDetailContent() {
                 {c.label}
               </button>
             ))}
+            {/* 封鎖寄件者按鈕 */}
+            <button
+              onClick={handleMuteSender}
+              disabled={muting}
+              className="text-sm px-3 py-1 rounded-full border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 ml-2"
+              title="封鎖此寄件者 — 以後嘅 email 自動 archive"
+            >
+              {muting ? "封鎖中…" : "封鎖寄件者"}
+            </button>
           </div>
           {email.classification?.ai_reason && (
             <p className="text-xs text-muted-foreground mt-2">
               AI 原因：{email.classification.ai_reason}（信心{" "}
               {(email.classification.ai_confidence * 100).toFixed(0)}%）
+            </p>
+          )}
+          {isPromo && (
+            <p className="text-xs text-muted-foreground mt-1">
+              如果想繼續收到呢個寄件者嘅 email，唔好撳「封鎖寄件者」。
             </p>
           )}
         </section>

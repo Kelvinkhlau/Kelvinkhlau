@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.deps import DbSession, current_user
 from app.models.email import Email, EmailClassification
 from app.models.user import User
-from app.schemas.email import CategoryUpdate, EmailDetail, EmailOut
+from app.schemas.email import CategoryUpdate, EmailOut
 from app.services import email_sync
 
 # 所有 emails endpoints 都要 JWT auth
@@ -45,7 +45,9 @@ async def list_emails(
 
     Response header `X-Total-Count` 係過濾後嘅總數（俾前端做 pagination）。
     """
-    base = select(Email).options(selectinload(Email.classification))
+    base = select(Email).options(selectinload(Email.classification)).where(
+        Email.is_archived.is_(False)
+    )
 
     if category:
         base = base.join(
@@ -114,13 +116,57 @@ async def email_stats(db: DbSession) -> EmailStats:
     )
 
 
-@router.get("/{email_id}", response_model=EmailDetail)
-async def get_email(email_id: int, db: DbSession) -> Email:
-    """睇 email 詳情。"""
+@router.get("/{email_id}")
+async def get_email(email_id: int, db: DbSession) -> dict:
+    """睇 email 詳情 — 包含 prev_id / next_id 方便前後導航。"""
     email = db.get(Email, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="Email not found")
-    return email
+
+    # 上一封（時間較新）
+    prev_row = db.execute(
+        select(Email.id)
+        .where(Email.is_archived.is_(False), Email.received_at > email.received_at)
+        .order_by(Email.received_at.asc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    # 下一封（時間較舊）
+    next_row = db.execute(
+        select(Email.id)
+        .where(Email.is_archived.is_(False), Email.received_at < email.received_at)
+        .order_by(Email.received_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    # Serialize classification
+    cls_data = None
+    if email.classification:
+        cls_data = {
+            "ai_category": email.classification.ai_category,
+            "ai_confidence": email.classification.ai_confidence,
+            "ai_reason": email.classification.ai_reason,
+            "user_category": email.classification.user_category,
+            "final_category": email.classification.final_category,
+        }
+
+    return {
+        "id": email.id,
+        "subject": email.subject,
+        "sender": email.sender,
+        "sender_email": email.sender_email,
+        "snippet": email.snippet,
+        "received_at": email.received_at.isoformat() if email.received_at else None,
+        "is_read": email.is_read,
+        "is_archived": email.is_archived,
+        "has_attachment": email.has_attachment,
+        "classification": cls_data,
+        "body_text": email.body_text,
+        "body_html": email.body_html,
+        "recipients": email.recipients,
+        "prev_id": prev_row,
+        "next_id": next_row,
+    }
 
 
 @router.put("/{email_id}/read")
@@ -162,6 +208,17 @@ async def update_category(
 
     db.commit()
     return {"ok": True, "final_category": payload.category}
+
+
+@router.put("/{email_id}/archive")
+async def archive_email(email_id: int, db: DbSession, archive: bool = True) -> dict:
+    """Archive / un-archive 一封 email。"""
+    email = db.get(Email, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    email.is_archived = archive
+    db.commit()
+    return {"ok": True, "is_archived": archive}
 
 
 @router.post("/sync", response_model=SyncResponse)

@@ -215,13 +215,24 @@ def classify_email(
     subject: str,
     sender: str,
     snippet: str,
+    examples: list[dict] | None = None,
 ) -> ClassificationResult:
     """用 configured provider 分類一封 email。
 
     返回 category in {important, normal, promotional}，confidence 0.0-1.0。
+    `examples` 係用戶之前嘅修正，做 few-shot learning。
     """
     settings = get_settings()
     user_content = f"Subject: {subject}\nFrom: {sender}\n\n{snippet}"
+
+    # 加入用戶修正做 few-shot examples
+    if examples:
+        examples_text = "\n\n以下係用戶之前嘅分類偏好（請參考）：\n"
+        for ex in examples:
+            examples_text += (
+                f"- Subject: {ex['subject']} | From: {ex['sender']} → {ex['category']}\n"
+            )
+        user_content = examples_text + "\n---\n請分類以下 email：\n\n" + user_content
 
     provider = (settings.ai_provider or "auto").lower()
 

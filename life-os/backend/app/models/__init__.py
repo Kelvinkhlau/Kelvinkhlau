@@ -9,6 +9,7 @@ from app.models.note import Note
 from app.models.project import Project
 from app.models.todo import Todo
 from app.models.user import User
+from app.models.muted_sender import MutedSender
 from app.models.vip import VipSender
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "Idea",
     "CalendarEvent",
     "VipSender",
+    "MutedSender",
     "Expense",
     "Note",
     "AuditLog",
