@@ -18,7 +18,7 @@ trap cleanup EXIT INT TERM
     echo "[backend] uv sync..."
     uv sync
   fi
-  PORT="${APP_PORT:-5100}"
+  PORT="${APP_PORT:-3100}"
   echo "[backend] starting on http://0.0.0.0:$PORT"
   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port "$PORT"
 ) &
