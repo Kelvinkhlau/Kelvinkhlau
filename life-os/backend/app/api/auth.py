@@ -200,8 +200,10 @@ async def gmail_callback(
 @router.get("/gmail/status")
 async def gmail_status(db: DbSession) -> dict:
     """檢查 Gmail 連接狀態（係咪已經有 refresh_token）。"""
-    user = db.execute(select(User).limit(1)).scalar_one_or_none()
-    if user is None or not user.gmail_refresh_token:
+    user = db.execute(
+        select(User).where(User.gmail_refresh_token.isnot(None)).limit(1)
+    ).scalar_one_or_none()
+    if user is None:
         return {"connected": False}
     return {
         "connected": True,
