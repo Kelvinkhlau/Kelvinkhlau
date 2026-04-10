@@ -1,5 +1,6 @@
 """Email API routes。"""
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -11,7 +12,9 @@ from app.deps import DbSession, current_user
 from app.models.email import Email, EmailClassification
 from app.models.user import User
 from app.schemas.email import CategoryUpdate, EmailOut
-from app.services import email_sync
+from app.services import ai_classifier, email_sync
+
+logger = logging.getLogger(__name__)
 
 # 所有 emails endpoints 都要 JWT auth
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -250,4 +253,136 @@ async def trigger_sync(
         new=result.new,
         classified=result.classified,
         errors=result.errors,
+    )
+
+
+class AiTestResponse(BaseModel):
+    ok: bool
+    provider: str
+    model: str | None = None
+    result: dict | None = None
+    error: str | None = None
+
+
+@router.get("/ai-test", response_model=AiTestResponse)
+async def ai_test() -> AiTestResponse:
+    """測試 AI 分類 API 連線是否正常。
+
+    用一封假 email 做測試 — 唔會寫入 DB。
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    provider = (settings.ai_provider or "auto").lower()
+
+    try:
+        result = ai_classifier.classify_email(
+            subject="Test: 50% off all items today only!",
+            sender="promo@testshop.com",
+            snippet="Don't miss our biggest sale of the year. Use code SAVE50 at checkout.",
+        )
+        return AiTestResponse(
+            ok=True,
+            provider=provider,
+            model=result.model,
+            result={
+                "category": result.category,
+                "confidence": result.confidence,
+                "reason": result.reason,
+            },
+        )
+    except Exception as e:
+        logger.exception("AI test failed")
+        return AiTestResponse(
+            ok=False,
+            provider=provider,
+            error=str(e),
+        )
+
+
+class ClassifyAllResponse(BaseModel):
+    total_unclassified: int
+    classified: int
+    errors: list[str]
+
+
+@router.post("/classify-all", response_model=ClassifyAllResponse)
+async def classify_all(
+    db: DbSession,
+    limit: int = Query(50, ge=1, le=500),
+) -> ClassifyAllResponse:
+    """批量分類所有未分類嘅 emails。
+
+    修好 AI API key 之後用呢個 endpoint 補返之前漏咗嘅分類。
+    """
+    # 搵所有冇 classification 嘅 email
+    subq = select(EmailClassification.email_id)
+    stmt = (
+        select(Email)
+        .where(Email.id.notin_(subq))
+        .order_by(desc(Email.received_at))
+        .limit(limit)
+    )
+    emails = db.execute(stmt).scalars().all()
+    total = len(emails)
+
+    if total == 0:
+        return ClassifyAllResponse(total_unclassified=0, classified=0, errors=[])
+
+    # 撈 few-shot examples
+    examples = email_sync._get_recent_corrections(db, limit=5)
+
+    classified = 0
+    errors: list[str] = []
+
+    for email in emails:
+        try:
+            # Check VIP / muted rules first
+            from app.api.muted import is_muted
+            from app.api.vip import is_vip
+
+            user_id = email.user_id
+
+            if is_vip(db, user_id, email.sender_email):
+                cls = EmailClassification(
+                    email_id=email.id,
+                    ai_category="important",
+                    ai_confidence=1.0,
+                    ai_reason="VIP 白名單",
+                    ai_model="vip-rule",
+                )
+            elif is_muted(db, user_id, email.sender_email):
+                cls = EmailClassification(
+                    email_id=email.id,
+                    ai_category="promotional",
+                    ai_confidence=1.0,
+                    ai_reason="封鎖寄件者",
+                    ai_model="muted-rule",
+                )
+                email.is_archived = True
+            else:
+                result = ai_classifier.classify_email(
+                    subject=email.subject,
+                    sender=email.sender,
+                    snippet=email.snippet or (email.body_text or "")[:500],
+                    examples=examples,
+                )
+                cls = EmailClassification(
+                    email_id=email.id,
+                    ai_category=result.category,
+                    ai_confidence=result.confidence,
+                    ai_reason=result.reason,
+                    ai_model=result.model,
+                )
+            db.add(cls)
+            classified += 1
+        except Exception as e:
+            errors.append(f"email {email.id} ({email.subject[:30]}): {e}")
+            logger.exception("classify-all failed for email %d", email.id)
+
+    db.commit()
+    return ClassifyAllResponse(
+        total_unclassified=total,
+        classified=classified,
+        errors=errors,
     )

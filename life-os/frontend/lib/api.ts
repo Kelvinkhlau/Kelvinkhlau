@@ -389,6 +389,19 @@ export const api = {
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<SyncResult>(`/emails/sync${suffix}`, { method: "POST" });
   },
+  aiTest: () =>
+    request<{
+      ok: boolean;
+      provider: string;
+      model: string | null;
+      result: { category: string; confidence: number; reason: string } | null;
+      error: string | null;
+    }>("/emails/ai-test"),
+  classifyAll: (limit = 50) =>
+    request<{ total_unclassified: number; classified: number; errors: string[] }>(
+      `/emails/classify-all?limit=${limit}`,
+      { method: "POST" },
+    ),
 
   // Todos
   listTodos: (params?: { done?: boolean; project_id?: number }) => {
