@@ -75,32 +75,51 @@ async def ai_test_public() -> dict:
     """測試 AI API 連線（唔需要 auth，方便 curl 診斷）。"""
     import logging
 
-    from app.services import ai_classifier
-
     logger = logging.getLogger(__name__)
     provider = (settings.ai_provider or "auto").lower()
 
-    try:
-        result = ai_classifier.classify_email(
-            subject="Test: 50% off all items today only!",
-            sender="promo@testshop.com",
-            snippet="Don't miss our biggest sale of the year. Use code SAVE50 at checkout.",
-        )
-        return {
-            "ok": True,
-            "provider": provider,
-            "model": result.model,
-            "category": result.category,
-            "confidence": result.confidence,
-            "reason": result.reason,
-        }
-    except Exception as e:
-        logger.exception("AI test failed")
-        return {
-            "ok": False,
-            "provider": provider,
-            "error": str(e),
-        }
+    # 顯示 key 配置狀態（唔顯示完整 key）
+    anthropic_key = settings.anthropic_api_key or ""
+    openai_key = settings.openai_api_key or ""
+    key_info = {
+        "anthropic_key_set": bool(anthropic_key),
+        "anthropic_key_prefix": anthropic_key[:12] + "..." if len(anthropic_key) > 12 else "(empty)",
+        "openai_key_set": bool(openai_key),
+        "openai_key_prefix": openai_key[:8] + "..." if len(openai_key) > 8 else "(empty)",
+    }
+
+    # 分開測試每個 provider
+    results = {}
+
+    # Test Anthropic
+    if anthropic_key:
+        try:
+            from app.services.ai_classifier import _classify_anthropic
+            r = _classify_anthropic("Subject: Test sale\nFrom: test@shop.com\n\n50% off today")
+            results["anthropic"] = {"ok": True, "model": r.model, "category": r.category}
+        except Exception as e:
+            results["anthropic"] = {"ok": False, "error": str(e)}
+    else:
+        results["anthropic"] = {"ok": False, "error": "ANTHROPIC_API_KEY not set"}
+
+    # Test OpenAI
+    if openai_key:
+        try:
+            from app.services.ai_classifier import _classify_openai
+            r = _classify_openai("Subject: Test sale\nFrom: test@shop.com\n\n50% off today")
+            results["openai"] = {"ok": True, "model": r.model, "category": r.category}
+        except Exception as e:
+            results["openai"] = {"ok": False, "error": str(e)}
+    else:
+        results["openai"] = {"ok": False, "error": "OPENAI_API_KEY not set"}
+
+    any_ok = any(r.get("ok") for r in results.values())
+    return {
+        "ok": any_ok,
+        "provider_setting": provider,
+        "keys": key_info,
+        "results": results,
+    }
 
 
 # Production：serve frontend static files（同一個 origin）
