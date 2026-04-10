@@ -191,7 +191,9 @@ async def sync_now_public(limit: int = 500, classify: bool = True) -> dict:
 
     db = SessionLocal()
     try:
-        user = db.execute(select(User).limit(1)).scalar_one_or_none()
+        user = db.execute(
+            select(User).where(User.gmail_refresh_token.is_not(None)).limit(1)
+        ).scalar_one_or_none()
         if user is None:
             return {"error": "冇 user record — 請先註冊"}
         if not user.gmail_refresh_token:
