@@ -374,6 +374,9 @@ async def classify_all(
                     ai_reason=result.reason,
                     ai_model=result.model,
                 )
+                # 廣告高信心 → 自動 archive
+                if result.category == "promotional" and result.confidence >= 0.75:
+                    email.is_archived = True
             db.add(cls)
             classified += 1
         except Exception as e:

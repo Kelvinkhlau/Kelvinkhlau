@@ -151,6 +151,7 @@ async def classify_now_public(limit: int = 50) -> dict:
 
         examples = email_sync._get_recent_corrections(db, limit=5)
         classified = 0
+        archived = 0
         errors: list[str] = []
 
         for email in emails:
@@ -170,12 +171,21 @@ async def classify_now_public(limit: int = 50) -> dict:
                 )
                 db.add(cls)
                 classified += 1
+                # 廣告高信心 → 自動 archive
+                if result.category == "promotional" and result.confidence >= 0.75:
+                    email.is_archived = True
+                    archived += 1
             except Exception as e:
                 errors.append(f"email {email.id}: {e}")
                 logger.exception("classify failed for email %d", email.id)
 
         db.commit()
-        return {"total_unclassified": total, "classified": classified, "errors": errors}
+        return {
+            "total_unclassified": total,
+            "classified": classified,
+            "archived": archived,
+            "errors": errors,
+        }
     finally:
         db.close()
 

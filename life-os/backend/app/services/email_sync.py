@@ -151,6 +151,9 @@ def sync_for_user(
                         ai_reason=result.reason,
                         ai_model=result.model,
                     )
+                    # 廣告高信心 → 自動 archive（唔顯示喺 inbox）
+                    if result.category == "promotional" and result.confidence >= 0.75:
+                        email.is_archived = True
                 db.add(classification)
                 classified_count += 1
             except Exception as e:
