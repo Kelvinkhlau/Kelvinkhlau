@@ -115,6 +115,30 @@ export type ProjectCreate = {
 
 export type ProjectUpdate = Partial<ProjectCreate>;
 
+export type Idea = {
+  id: number;
+  title: string;
+  content: string | null;
+  tags: string;
+  project_id: number | null;
+  pinned: boolean;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IdeaCreate = {
+  title: string;
+  content?: string | null;
+  tags?: string;
+  project_id?: number | null;
+};
+
+export type IdeaUpdate = Partial<IdeaCreate> & {
+  pinned?: boolean;
+  archived?: boolean;
+};
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -261,6 +285,36 @@ export const api = {
     }),
   deleteProject: async (id: number): Promise<void> => {
     await rawFetch(`/projects/${id}`, { method: "DELETE" });
+  },
+
+  // Ideas
+  listIdeas: (params?: {
+    archived?: boolean;
+    tag?: string;
+    project_id?: number;
+    q?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.archived !== undefined) qs.set("archived", String(params.archived));
+    if (params?.tag) qs.set("tag", params.tag);
+    if (params?.project_id !== undefined)
+      qs.set("project_id", String(params.project_id));
+    if (params?.q) qs.set("q", params.q);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<Idea[]>(`/ideas${suffix}`);
+  },
+  createIdea: (payload: IdeaCreate) =>
+    request<Idea>("/ideas", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateIdea: (id: number, payload: IdeaUpdate) =>
+    request<Idea>(`/ideas/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteIdea: async (id: number): Promise<void> => {
+    await rawFetch(`/ideas/${id}`, { method: "DELETE" });
   },
 
   // Gmail auth

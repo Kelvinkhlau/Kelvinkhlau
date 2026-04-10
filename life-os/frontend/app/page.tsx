@@ -184,6 +184,16 @@ export default function HomePage() {
           </div>
         </Link>
 
+        <Link
+          href="/ideas"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">💡 Ideas</div>
+          <div className="text-sm text-muted-foreground">
+            快速記低靈感、想法、snippets
+          </div>
+        </Link>
+
         {!loggedIn && (
           <Link
             href="/login"

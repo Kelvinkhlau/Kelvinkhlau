@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, emails, projects, todos, ws
+from app.api import auth, emails, ideas, projects, todos, ws
 from app.config import get_settings
 from app.services.ws_manager import manager as ws_manager
 from app.workers.scheduler import start_scheduler, stop_scheduler
@@ -50,6 +50,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(emails.router, prefix="/api/emails", tags=["emails"])
 app.include_router(todos.router, prefix="/api/todos", tags=["todos"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(ideas.router, prefix="/api/ideas", tags=["ideas"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
 
 
