@@ -139,6 +139,27 @@ export type IdeaUpdate = Partial<IdeaCreate> & {
   archived?: boolean;
 };
 
+export type CalendarEvent = {
+  id: number;
+  google_event_id: string;
+  google_calendar_id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  start_at: string;
+  end_at: string;
+  all_day: boolean;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CalendarSyncResult = {
+  fetched: number;
+  new: number;
+  updated: number;
+};
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -315,6 +336,23 @@ export const api = {
     }),
   deleteIdea: async (id: number): Promise<void> => {
     await rawFetch(`/ideas/${id}`, { method: "DELETE" });
+  },
+
+  // Calendar
+  listCalendarEvents: (params?: { days?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<CalendarEvent[]>(`/calendar${suffix}`);
+  },
+  todayEvents: () => request<CalendarEvent[]>("/calendar/today"),
+  syncCalendar: (params?: { days?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.days) qs.set("days", String(params.days));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<CalendarSyncResult>(`/calendar/sync${suffix}`, {
+      method: "POST",
+    });
   },
 
   // Gmail auth

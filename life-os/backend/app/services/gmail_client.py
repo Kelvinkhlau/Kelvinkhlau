@@ -32,9 +32,10 @@ def _gmail_is_transient(exc: BaseException) -> bool:
     # 網絡 / SSL / timeout —— retry
     return True
 
-# Gmail API scopes — 只讀取
+# Google API scopes — Gmail 只讀 + Calendar 只讀
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar.readonly",
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
