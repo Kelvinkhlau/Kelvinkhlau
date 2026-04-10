@@ -172,26 +172,26 @@ function EmailDetailContent() {
           {email.prev_id ? (
             <Link
               href={`/inbox/detail?id=${email.prev_id}`}
-              className="px-3 py-1 text-sm border border-border rounded hover:bg-muted"
+              className="px-3 py-1.5 text-sm font-medium border border-blue-300 text-blue-600 rounded hover:bg-blue-50"
               title="上一封（較新）"
             >
               ← 上一封
             </Link>
           ) : (
-            <span className="px-3 py-1 text-sm border border-border rounded opacity-30">
+            <span className="px-3 py-1.5 text-sm border border-border rounded opacity-40 text-muted-foreground">
               ← 上一封
             </span>
           )}
           {email.next_id ? (
             <Link
               href={`/inbox/detail?id=${email.next_id}`}
-              className="px-3 py-1 text-sm border border-border rounded hover:bg-muted"
+              className="px-3 py-1.5 text-sm font-medium border border-blue-300 text-blue-600 rounded hover:bg-blue-50"
               title="下一封（較舊）"
             >
               下一封 →
             </Link>
           ) : (
-            <span className="px-3 py-1 text-sm border border-border rounded opacity-30">
+            <span className="px-3 py-1.5 text-sm border border-border rounded opacity-40 text-muted-foreground">
               下一封 →
             </span>
           )}

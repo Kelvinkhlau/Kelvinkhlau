@@ -20,7 +20,18 @@ const CATEGORY_LABEL: Record<string, string> = {
   unclassified: "未分類",
 };
 
-function classificationChip(email: Email) {
+const CATEGORY_OPTIONS = [
+  { value: "important", label: "重要", color: "bg-red-50 text-red-700 border-red-200" },
+  { value: "normal", label: "一般", color: "bg-slate-50 text-slate-700 border-slate-200" },
+  { value: "promotional", label: "廣告", color: "bg-amber-50 text-amber-700 border-amber-200" },
+];
+
+function classificationChip(
+  email: Email,
+  editingId: number | null,
+  setEditingId: (id: number | null) => void,
+  onChangeCategory: (emailId: number, category: string) => void,
+) {
   if (!email.classification) return null;
   const cat = email.classification.final_category;
   const conf = email.classification.ai_confidence;
@@ -34,22 +45,55 @@ function classificationChip(email: Email) {
         ? "bg-amber-50 text-amber-700 border-amber-200"
         : "bg-slate-50 text-slate-700 border-slate-200";
 
+  // 展開模式：顯示 3 個分類按鈕
+  if (editingId === email.id) {
+    return (
+      <div
+        className="flex gap-1 ml-2"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      >
+        {CATEGORY_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChangeCategory(email.id, opt.value);
+              setEditingId(null);
+            }}
+            className={`text-xs px-2 py-1 rounded border whitespace-nowrap ${opt.color} ${
+              cat === opt.value ? "ring-2 ring-offset-1 ring-blue-400 font-bold" : ""
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // 預設模式：顯示分類 chip，點擊展開
   return (
-    <span
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditingId(email.id);
+      }}
       className={`ml-2 text-xs px-2 py-1 rounded border whitespace-nowrap ${color} ${
         isSuggestion ? "opacity-60 italic" : ""
       }`}
       title={
         isSuggestion
-          ? `AI 建議（信心 ${(conf * 100).toFixed(0)}%）`
+          ? `AI 建議（信心 ${(conf * 100).toFixed(0)}%）— 撳改分類`
           : userOverridden
-            ? "用戶修正"
-            : `AI 分類（信心 ${(conf * 100).toFixed(0)}%）`
+            ? "用戶修正 — 撳改分類"
+            : `AI 分類（信心 ${(conf * 100).toFixed(0)}%）— 撳改分類`
       }
     >
       {isSuggestion ? "建議：" : ""}
       {CATEGORY_LABEL[cat] ?? cat}
-    </span>
+    </button>
   );
 }
 
@@ -64,6 +108,29 @@ export default function InboxPage() {
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+
+  async function handleCategoryChange(emailId: number, newCategory: string) {
+    try {
+      const res = await api.updateCategory(emailId, newCategory);
+      setEmails((prev) =>
+        prev.map((e) =>
+          e.id === emailId && e.classification
+            ? {
+                ...e,
+                classification: {
+                  ...e.classification,
+                  user_category: newCategory,
+                  final_category: res.final_category,
+                },
+              }
+            : e,
+        ),
+      );
+    } catch {
+      // silent fail — next refresh will show correct state
+    }
+  }
 
   // Debounce search input
   useEffect(() => {
@@ -255,7 +322,7 @@ export default function InboxPage() {
                         {email.snippet}
                       </div>
                     </div>
-                    {classificationChip(email)}
+                    {classificationChip(email, editingCategoryId, setEditingCategoryId, handleCategoryChange)}
                   </div>
                 </Link>
               </li>
