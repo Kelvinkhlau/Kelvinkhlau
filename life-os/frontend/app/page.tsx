@@ -205,6 +205,16 @@ export default function HomePage() {
         </Link>
 
         <Link
+          href="/notes"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">📝 知識庫</div>
+          <div className="text-sm text-muted-foreground">
+            筆記、文章、snippets — 支援 Markdown
+          </div>
+        </Link>
+
+        <Link
           href="/expenses"
           className="block p-4 border border-border rounded-lg hover:bg-muted transition"
         >

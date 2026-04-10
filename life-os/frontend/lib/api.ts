@@ -210,6 +210,30 @@ export type ExpenseStats = {
   by_category: Record<string, number>;
 };
 
+export type Note = {
+  id: number;
+  title: string;
+  content: string;
+  folder: string;
+  tags: string;
+  pinned: boolean;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NoteCreate = {
+  title: string;
+  content?: string;
+  folder?: string;
+  tags?: string;
+};
+
+export type NoteUpdate = Partial<NoteCreate> & {
+  pinned?: boolean;
+  archived?: boolean;
+};
+
 // JWT token storage（localStorage — MVP 夠用）
 const TOKEN_KEY = "lifeos.token";
 
@@ -419,6 +443,41 @@ export const api = {
     }),
   deleteVip: async (id: number): Promise<void> => {
     await rawFetch(`/vip/${id}`, { method: "DELETE" });
+  },
+
+  // Notes (Knowledge)
+  listNotes: (params?: {
+    archived?: boolean;
+    folder?: string;
+    tag?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.archived !== undefined) qs.set("archived", String(params.archived));
+    if (params?.folder !== undefined) qs.set("folder", params.folder);
+    if (params?.tag) qs.set("tag", params.tag);
+    if (params?.q) qs.set("q", params.q);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<Note[]>(`/notes${suffix}`);
+  },
+  listNoteFolders: () => request<string[]>("/notes/folders"),
+  getNote: (id: number) => request<Note>(`/notes/${id}`),
+  createNote: (payload: NoteCreate) =>
+    request<Note>("/notes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateNote: (id: number, payload: NoteUpdate) =>
+    request<Note>(`/notes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteNote: async (id: number): Promise<void> => {
+    await rawFetch(`/notes/${id}`, { method: "DELETE" });
   },
 
   // Expenses
