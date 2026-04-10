@@ -192,13 +192,16 @@ async def sync_now_public(limit: int = 500, classify: bool = True) -> dict:
     db = SessionLocal()
     try:
         user = db.execute(select(User).limit(1)).scalar_one_or_none()
-        if user is None or not user.gmail_refresh_token:
-            return {"error": "Gmail 仲未連接"}
+        if user is None:
+            return {"error": "冇 user record — 請先註冊"}
+        if not user.gmail_refresh_token:
+            return {
+                "error": f"User {user.email} 冇 Gmail refresh token — 請去 http://localhost:5200 重新連接 Gmail",
+                "user_email": user.email,
+                "has_token": False,
+            }
 
-        # 清除 history_id 強制 full fetch
-        user.gmail_history_id = None
-        db.commit()
-
+        # 唔清 history_id — 用 use_history=False 就會 fallback 到 list recent
         result = email_sync.sync_for_user(
             db, user, limit=limit, use_history=False, classify=classify,
         )
@@ -206,7 +209,7 @@ async def sync_now_public(limit: int = 500, classify: bool = True) -> dict:
             "fetched": result.fetched,
             "new": result.new,
             "classified": result.classified,
-            "errors": result.errors,
+            "errors": result.errors[:10],  # 最多顯示 10 個 error
         }
     finally:
         db.close()
