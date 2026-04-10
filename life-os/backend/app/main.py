@@ -180,6 +180,38 @@ async def classify_now_public(limit: int = 50) -> dict:
         db.close()
 
 
+@app.post("/api/sync-now")
+async def sync_now_public(limit: int = 500, classify: bool = True) -> dict:
+    """開發用：拉 Gmail 郵件 + AI 分類（唔需要 auth）。"""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models.user import User
+    from app.services import email_sync
+
+    db = SessionLocal()
+    try:
+        user = db.execute(select(User).limit(1)).scalar_one_or_none()
+        if user is None or not user.gmail_refresh_token:
+            return {"error": "Gmail 仲未連接"}
+
+        # 清除 history_id 強制 full fetch
+        user.gmail_history_id = None
+        db.commit()
+
+        result = email_sync.sync_for_user(
+            db, user, limit=limit, use_history=False, classify=classify,
+        )
+        return {
+            "fetched": result.fetched,
+            "new": result.new,
+            "classified": result.classified,
+            "errors": result.errors,
+        }
+    finally:
+        db.close()
+
+
 # Production：serve frontend static files（同一個 origin）
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
