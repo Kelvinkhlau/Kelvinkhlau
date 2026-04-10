@@ -104,6 +104,7 @@ export default function InboxPage() {
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
@@ -141,7 +142,7 @@ export default function InboxPage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [category, debouncedQ, unreadOnly]);
+  }, [category, debouncedQ, unreadOnly, showArchived]);
 
   useEffect(() => {
     setLoading(true);
@@ -151,6 +152,7 @@ export default function InboxPage() {
         category: category || undefined,
         q: debouncedQ || undefined,
         unread_only: unreadOnly || undefined,
+        archived: showArchived || undefined,
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       })
@@ -269,6 +271,16 @@ export default function InboxPage() {
             }`}
           >
             只睇未讀
+          </button>
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className={`text-sm px-3 py-1 rounded-full border ${
+              showArchived
+                ? "bg-amber-600 text-white border-amber-600"
+                : "border-border hover:bg-muted"
+            }`}
+          >
+            已封存
           </button>
           <span className="ml-auto text-xs text-muted-foreground">
             {resultLabel}

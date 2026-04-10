@@ -355,6 +355,7 @@ export const api = {
     category?: string;
     q?: string;
     unread_only?: boolean;
+    archived?: boolean;
     limit?: number;
     offset?: number;
   }): Promise<EmailListResponse> => {
@@ -362,6 +363,7 @@ export const api = {
     if (params?.category) qs.set("category", params.category);
     if (params?.q) qs.set("q", params.q);
     if (params?.unread_only) qs.set("unread_only", "true");
+    if (params?.archived) qs.set("archived", "true");
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const suffix = qs.toString() ? `?${qs}` : "";

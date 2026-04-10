@@ -41,6 +41,7 @@ async def list_emails(
     category: str | None = Query(None, description="important / normal / promotional"),
     q: str | None = Query(None, description="搜尋 subject / sender / snippet / body"),
     unread_only: bool = Query(False),
+    archived: bool = Query(False, description="true = 只睇已封存"),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
 ) -> list[Email]:
@@ -49,7 +50,7 @@ async def list_emails(
     Response header `X-Total-Count` 係過濾後嘅總數（俾前端做 pagination）。
     """
     base = select(Email).options(selectinload(Email.classification)).where(
-        Email.is_archived.is_(False)
+        Email.is_archived.is_(archived)
     )
 
     if category:
