@@ -18,8 +18,8 @@ trap cleanup EXIT INT TERM
     echo "[backend] uv sync..."
     uv sync
   fi
-  PORT="${APP_PORT:-3100}"
-  echo "[backend] starting on http://localhost:$PORT"
+  PORT="${APP_PORT:-5100}"
+  echo "[backend] starting on http://0.0.0.0:$PORT"
   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port "$PORT"
 ) &
 
@@ -30,8 +30,8 @@ trap cleanup EXIT INT TERM
     echo "[frontend] pnpm install..."
     pnpm install
   fi
-  echo "[frontend] starting on http://0.0.0.0:3000"
-  pnpm exec next dev -p 3000 -H 0.0.0.0
+  echo "[frontend] starting on http://0.0.0.0:5000"
+  pnpm exec next dev -p 5000 -H 0.0.0.0
 ) &
 
 wait
