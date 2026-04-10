@@ -530,6 +530,27 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
 
+  // Voice
+  transcribe: async (audioBlob: Blob): Promise<string> => {
+    const form = new FormData();
+    form.append("file", audioBlob, "recording.webm");
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/voice/transcribe`, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new ApiError(res.status, detail);
+    }
+    const data = await res.json();
+    return data.text;
+  },
+
   // Gmail auth
   gmailStatus: () => request<GmailStatus>("/auth/gmail/status"),
   gmailAuthorize: () =>
