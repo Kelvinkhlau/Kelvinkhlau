@@ -88,6 +88,7 @@ cd frontend && pnpm test
 - [x] WebSocket real-time push
 - [x] Todo module（bonus）
 - [x] Project module（group todos、進度追蹤）
+- [x] Idea / Card module（快速記 idea、tags、pin/archive）
 - [x] Daily backup（launchd plist）
 - [x] Mac mini 部署 (launchd + Caddy + Tailscale) 文檔
 
