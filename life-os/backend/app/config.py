@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/lifeos.db"
     database_encryption_key: str | None = None
 
-    # AI provider — "openai" 或 "anthropic"（emails 分類用邊個）
-    ai_provider: str = "openai"
+    # AI provider — "anthropic"（預設）、"openai"、或 "auto"（anthropic 行先，失敗 fallback openai）
+    ai_provider: str = "auto"
 
     # Anthropic
     anthropic_api_key: str | None = None

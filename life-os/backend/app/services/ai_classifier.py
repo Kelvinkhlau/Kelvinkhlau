@@ -223,11 +223,20 @@ def classify_email(
     settings = get_settings()
     user_content = f"Subject: {subject}\nFrom: {sender}\n\n{snippet}"
 
-    provider = (settings.ai_provider or "openai").lower()
+    provider = (settings.ai_provider or "auto").lower()
+
     if provider == "anthropic":
         return _classify_anthropic(user_content)
     if provider == "openai":
         return _classify_openai(user_content)
+    if provider == "auto":
+        # Anthropic 行先，失敗 fallback OpenAI
+        try:
+            return _classify_anthropic(user_content)
+        except Exception as e:
+            logger.warning("Anthropic failed, falling back to OpenAI: %s", e)
+            return _classify_openai(user_content)
+
     raise RuntimeError(
-        f"Unknown AI_PROVIDER: {settings.ai_provider!r} (要係 openai / anthropic)"
+        f"Unknown AI_PROVIDER: {settings.ai_provider!r} (要係 auto / anthropic / openai)"
     )
