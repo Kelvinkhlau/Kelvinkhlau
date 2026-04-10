@@ -390,6 +390,18 @@ export const api = {
     await rawFetch(`/vip/${id}`, { method: "DELETE" });
   },
 
+  // AI assistant
+  chat: (message: string) =>
+    request<{
+      action: string;
+      reply: string;
+      created_id: number | null;
+      created_type: string | null;
+    }>("/assistant/chat", {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
+
   // Gmail auth
   gmailStatus: () => request<GmailStatus>("/auth/gmail/status"),
   gmailAuthorize: () =>

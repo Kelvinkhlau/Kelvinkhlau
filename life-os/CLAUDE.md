@@ -91,6 +91,7 @@ cd frontend && pnpm test
 - [x] Idea / Card module（快速記 idea、tags、pin/archive）
 - [x] Calendar 同步（Google Calendar API readonly sync）
 - [x] VIP 白名單（auto-mark important、skip AI）
+- [x] AI 助手（自然語言 → 建 todo/idea/project）
 - [x] Daily backup（launchd plist）
 - [x] Mac mini 部署 (launchd + Caddy + Tailscale) 文檔
 

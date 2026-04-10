@@ -205,6 +205,16 @@ export default function HomePage() {
         </Link>
 
         <Link
+          href="/assistant"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">🤖 AI 助手</div>
+          <div className="text-sm text-muted-foreground">
+            用自然語言建 todo / idea / project
+          </div>
+        </Link>
+
+        <Link
           href="/vip"
           className="block p-4 border border-border rounded-lg hover:bg-muted transition"
         >
