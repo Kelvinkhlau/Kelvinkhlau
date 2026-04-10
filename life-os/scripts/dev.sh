@@ -30,8 +30,8 @@ trap cleanup EXIT INT TERM
     echo "[frontend] pnpm install..."
     pnpm install
   fi
-  echo "[frontend] starting on http://0.0.0.0:5000"
-  pnpm exec next dev -p 5000 -H 0.0.0.0
+  echo "[frontend] starting on http://0.0.0.0:5200"
+  pnpm exec next dev -p 5200 -H 0.0.0.0
 ) &
 
 wait
