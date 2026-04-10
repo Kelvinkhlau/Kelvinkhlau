@@ -210,6 +210,37 @@ export type ExpenseStats = {
   by_category: Record<string, number>;
 };
 
+export type DailyReport = {
+  date: string;
+  todos: {
+    pending_total: number;
+    overdue: number;
+    due_today: number;
+    completed_today: number;
+    overdue_items: { id: number; title: string; due_at: string | null }[];
+    due_today_items: { id: number; title: string; priority: string }[];
+  };
+  calendar: {
+    event_count: number;
+    events: {
+      id: number;
+      title: string;
+      start_at: string;
+      end_at: string;
+      all_day: boolean;
+    }[];
+  };
+  emails: {
+    received_today: number;
+    unread_total: number;
+    important_today: number;
+  };
+  expenses: {
+    today_total: number;
+    today_count: number;
+  };
+};
+
 export type Note = {
   id: number;
   title: string;
@@ -529,6 +560,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+
+  // Daily Report
+  dailyReport: (params?: { report_date?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.report_date) qs.set("report_date", params.report_date);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<DailyReport>(`/report${suffix}`);
+  },
 
   // Voice
   transcribe: async (audioBlob: Blob): Promise<string> => {

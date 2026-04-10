@@ -225,6 +225,16 @@ export default function HomePage() {
         </Link>
 
         <Link
+          href="/report"
+          className="block p-4 border border-border rounded-lg hover:bg-muted transition"
+        >
+          <div className="font-medium">📊 日報</div>
+          <div className="text-sm text-muted-foreground">
+            每日摘要 — todos、行程、email、消費一覽
+          </div>
+        </Link>
+
+        <Link
           href="/assistant"
           className="block p-4 border border-border rounded-lg hover:bg-muted transition"
         >
