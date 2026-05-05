@@ -243,13 +243,29 @@ def cmd_tag(args: list[str], db: Session) -> str:
             f"❌ 搵唔到 broker `{broker_name}`{owner_suffix} 喺 {group.code}\n"
             f"睇 /brokers {group.code}"
         )
+    inferred_note = ""
+    if len(rows) > 1 and not owner_arg:
+        # Auto-disambiguate by tx's wallet label first word — Celia/Candy/Simon Tronlink
+        # all have first-word == broker.owner in B group.
+        wallet = db.get(AccountGroupWallet, tx.wallet_id)
+        wallet_owner_hint = wallet.label.split()[0].lower() if wallet else ""
+        filtered = [
+            b for b in rows
+            if b.owner and b.owner.lower() == wallet_owner_hint
+        ]
+        if len(filtered) == 1:
+            rows = filtered
+            inferred_note = (
+                f"\n   (推斷 owner=`{rows[0].owner}` 因為 tx 喺 {wallet.label})"
+            )
+
     if len(rows) > 1:
-        owners = ", ".join(
+        listing = ", ".join(
             f"{b.name} ({b.owner})" if b.owner else b.name for b in rows[:6]
         )
         return (
-            f"⚠️ `{broker_name}` 喺 {group.code} 對應到 {len(rows)} 個 broker：\n  {owners}\n"
-            f"打長啲 broker 名，或者加 owner（例：/tag {short_hash} {broker_name} Kelvin）"
+            f"⚠️ `{broker_name}` 喺 {group.code} 對應到 {len(rows)} 個 broker：\n  {listing}\n"
+            f"打長啲 broker 名，或者加 owner（例：/tag {short_hash} {broker_name} {rows[0].owner or 'Owner'}）"
         )
     broker = rows[0]
 
@@ -303,6 +319,8 @@ def cmd_tag(args: list[str], db: Session) -> str:
         f"✅ Tagged tx `{tx.tx_hash[:6]}` → {broker.name}"
         + (f" ({broker.owner})" if broker.owner else ""),
     ]
+    if inferred_note:
+        msg.append(inferred_note.strip())
     if learned and similar:
         msg.append(f"📚 學咗呢個 address。重有 {similar} 條同 address 嘅 pending tx — 跑一次 backfill 會自動 tag")
     elif learned:
