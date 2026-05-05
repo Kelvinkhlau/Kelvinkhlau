@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Idea } from "@/lib/api";
@@ -34,40 +33,60 @@ export default function IdeasPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const listKey = ["ideas", { archived: showArchived, q: search || undefined }] as const;
+
   const pinMutation = useMutation({
     mutationFn: (idea: Idea) =>
       api.updateIdea(idea.id, { pinned: !idea.pinned }),
+    onMutate: async (idea) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const prev = queryClient.getQueryData<Idea[]>(listKey);
+      queryClient.setQueryData<Idea[]>(listKey, (old) =>
+        old?.map((i) => (i.id === idea.id ? { ...i, pinned: !i.pinned } : i))
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(listKey, ctx.prev);
+      toast.error((e as Error).message);
+    },
     onSuccess: (updated) => {
-      queryClient.setQueryData<Idea[]>(
-        ["ideas", { archived: showArchived, q: search || undefined }],
-        (old) => old?.map((i) => (i.id === updated.id ? updated : i))
+      queryClient.setQueryData<Idea[]>(listKey, (old) =>
+        old?.map((i) => (i.id === updated.id ? updated : i))
       );
     },
-    onError: (e) => toast.error((e as Error).message),
   });
 
   const archiveMutation = useMutation({
     mutationFn: (idea: Idea) =>
       api.updateIdea(idea.id, { archived: !idea.archived }),
-    onSuccess: (_, idea) => {
-      queryClient.setQueryData<Idea[]>(
-        ["ideas", { archived: showArchived, q: search || undefined }],
-        (old) => old?.filter((i) => i.id !== idea.id)
-      );
+    onMutate: async (idea) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const prev = queryClient.getQueryData<Idea[]>(listKey);
+      queryClient.setQueryData<Idea[]>(listKey, (old) => old?.filter((i) => i.id !== idea.id));
+      return { prev };
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(listKey, ctx.prev);
+      toast.error((e as Error).message);
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteIdea(id),
-    onSuccess: (_, id) => {
-      queryClient.setQueryData<Idea[]>(
-        ["ideas", { archived: showArchived, q: search || undefined }],
-        (old) => old?.filter((i) => i.id !== id)
-      );
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const prev = queryClient.getQueryData<Idea[]>(listKey);
+      queryClient.setQueryData<Idea[]>(listKey, (old) => old?.filter((i) => i.id !== id));
+      return { prev };
+    },
+    onError: (e, _id, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(listKey, ctx.prev);
+      toast.error((e as Error).message);
+    },
+    onSuccess: () => {
       toast.success("已刪除");
     },
-    onError: (e) => toast.error((e as Error).message),
   });
 
   const handleCreate = (e: React.FormEvent) => {
@@ -77,12 +96,9 @@ export default function IdeasPage() {
   };
 
   return (
-    <main className="min-h-screen p-4 max-w-4xl mx-auto">
+    <main className="min-h-full p-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Ideas</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 首頁
-        </Link>
       </div>
 
       {/* Quick add */}

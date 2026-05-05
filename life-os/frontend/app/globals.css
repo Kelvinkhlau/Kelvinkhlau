@@ -2,35 +2,497 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Design System Tokens
+   ───────────────────────────────────────────────────────────────────────────
+   Layering convention:
+     background → surface → surface-elevated → overlay
+   Semantic colors each have 3 variants:
+     .DEFAULT (solid fill)
+     .soft    (淺底 — bg 用)
+     .strong  (深字 — text 用)
+     .foreground (配 DEFAULT 嘅對比字色)
+═══════════════════════════════════════════════════════════════════════════ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --border: 214.3 31.8% 91.4%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* ═══════════════════════════════════════════════════════════════
+       Cool Soft-Skeuomorphism palette —— Apple / Linear-like refinement
+       - Base: very light cool grey #F4F6F9
+       - Accent: deep navy #0F172A（selected / active）
+       - Shadows: 極 subtle，淺淺 floating feel
+       ═══════════════════════════════════════════════════════════════ */
+
+    /* ─── Surfaces (cool blue-grey scale) ───────────────────────── */
+    --background: 215 30% 97%;           /* #F4F6F9 — page */
+    --surface: 0 0% 100%;                /* #FFFFFF — cards */
+    --surface-elevated: 0 0% 100%;       /* popover same as card */
+    --overlay: 0 0% 100%;
+
+    /* Shadow tint — cool slate */
+    --shadow-color: 215 25% 50%;
+    --highlight-color: 0 0% 100%;
+
+    /* ─── Text hierarchy ────────────────────────────────────────── */
+    --foreground: 222 47% 11%;           /* #0F172A — deep navy ink */
+    --foreground-muted: 215 20% 45%;     /* #5B6B7F */
+    --foreground-subtle: 215 15% 65%;    /* #9AA5B4 */
+    --muted-foreground: 215 20% 45%;
+
+    /* ─── Muted surface ─────────────────────────────────────────── */
+    --muted: 215 25% 94%;                /* #ECEFF4 — pressed / hover */
+
+    /* ─── Borders (極淺 hairline) ───────────────────────────────── */
+    --border: 215 25% 90%;
+    --border-subtle: 215 28% 94%;
+    --border-strong: 215 22% 82%;
+
+    /* ─── Primary ───────────────────────────────────────────────── */
+    --primary: 222 47% 11%;              /* deep navy */
+    --primary-foreground: 0 0% 100%;
+
+    /* ─── Accent：deep navy（selected / today） ──────────────────── */
+    --accent: 222 47% 11%;               /* #0F172A */
+    --accent-soft: 215 30% 94%;          /* very light fill */
+    --accent-strong: 222 60% 6%;
+    --accent-foreground: 0 0% 100%;
+
+    /* ─── Success ───────────────────────────────────────────────── */
+    --success: 152 50% 40%;              /* #339966 */
+    --success-soft: 150 40% 94%;
+    --success-strong: 152 55% 30%;
+    --success-foreground: 0 0% 100%;
+
+    /* ─── Warning ───────────────────────────────────────────────── */
+    --warning: 32 90% 52%;               /* #F59E0B */
+    --warning-soft: 38 95% 94%;
+    --warning-strong: 28 80% 40%;
+    --warning-foreground: 30 30% 10%;
+
+    /* ─── Danger ────────────────────────────────────────────────── */
+    --danger: 0 72% 50%;                 /* #DC2626 */
+    --danger-soft: 0 85% 95%;
+    --danger-strong: 0 70% 40%;
+    --danger-foreground: 0 0% 100%;
+
+    /* ─── Info ──────────────────────────────────────────────────── */
+    --info: 215 60% 50%;
+    --info-soft: 215 55% 94%;
+    --info-strong: 215 70% 38%;
+    --info-foreground: 0 0% 100%;
+
+    /* ═══════════════════════════════════════════════════════════════
+       Depth palette —— 為卡片加層次，令目標物更 clear
+       - deepblue: 深藍（hero accent、Planner card）
+       - khaki: 卡其 / kraft paper（Todo card 底色、warmth）
+       - ice: 冰藍（event badge、time chip、cool highlight）
+       ═══════════════════════════════════════════════════════════════ */
+    --deepblue: 215 55% 22%;             /* #1B3A5E */
+    --deepblue-soft: 215 40% 93%;        /* #E4ECF5 */
+    --deepblue-strong: 218 65% 14%;      /* #0D1F3A */
+    --deepblue-foreground: 0 0% 100%;
+
+    --khaki: 36 28% 62%;                 /* #B8A782 */
+    --khaki-soft: 40 35% 92%;            /* #F1EADB */
+    --khaki-strong: 32 35% 32%;          /* #6B5A3E */
+    --khaki-foreground: 32 25% 15%;
+
+    --ice: 200 60% 72%;                  /* #89C6DD */
+    --ice-soft: 200 55% 94%;             /* #DCECF3 */
+    --ice-strong: 205 65% 32%;           /* #1F5C80 */
+    --ice-foreground: 205 70% 10%;
+
+    /* ─── Radii (generous，reference 用大圓角) ──────────────────── */
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 22px;
+    --radius-xl: 32px;
+
+    /* ═══════════════════════════════════════════════════════════════
+       Soft shadow system —— 極 subtle，Apple-like
+       ─ flat: barely perceptible
+       ─ raised: 淺淺 floating card
+       ─ inset: 微微 inner（for input groups）
+       ─ pressed: pressed-in state
+       ─ floating: modal / popover
+       ═══════════════════════════════════════════════════════════════ */
+
+    --shadow-flat:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.1),
+      0 1px 3px -1px hsl(var(--shadow-color) / 0.08);
+
+    --shadow-raised-sm:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.12),
+      0 3px 8px -2px hsl(var(--shadow-color) / 0.14),
+      0 0 0 1px hsl(var(--shadow-color) / 0.06);
+
+    --shadow-raised:
+      0 2px 6px -1px hsl(var(--shadow-color) / 0.14),
+      0 12px 28px -6px hsl(var(--shadow-color) / 0.22),
+      0 0 0 1px hsl(var(--shadow-color) / 0.08);
+
+    --shadow-inset:
+      inset 0 2px 4px 0 hsl(var(--shadow-color) / 0.12),
+      inset 0 0 0 1px hsl(var(--shadow-color) / 0.06);
+
+    --shadow-pressed:
+      inset 0 2px 6px 0 hsl(var(--shadow-color) / 0.22);
+
+    --shadow-floating:
+      0 12px 24px -6px hsl(var(--shadow-color) / 0.22),
+      0 32px 64px -12px hsl(var(--shadow-color) / 0.28),
+      0 0 0 1px hsl(var(--shadow-color) / 0.1);
+
+    /* Legacy alias */
+    --shadow-sm: var(--shadow-flat);
+    --shadow-md: var(--shadow-raised-sm);
+    --shadow-lg: var(--shadow-raised);
+    --shadow-xl: var(--shadow-floating);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --border: 217.2 32.6% 17.5%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* ═══════════════════════════════════════════════════════════════
+       Dark mode — deep navy（同 cool blue-grey 對應）
+       Apple-like subtle shadow，輕微 1px border 做 definition
+       ═══════════════════════════════════════════════════════════════ */
+
+    --background: 222 30% 8%;            /* deep navy page */
+    --surface: 222 25% 12%;              /* cards */
+    --surface-elevated: 222 20% 16%;     /* popover */
+    --overlay: 222 25% 12%;
+
+    --shadow-color: 222 50% 2%;
+    --highlight-color: 222 15% 22%;
+
+    --foreground: 215 20% 94%;           /* cool off-white */
+    --foreground-muted: 215 15% 62%;
+    --foreground-subtle: 215 12% 45%;
+    --muted-foreground: 215 15% 62%;
+
+    --muted: 222 18% 18%;
+
+    --border: 222 18% 22%;
+    --border-subtle: 222 20% 16%;
+    --border-strong: 222 15% 30%;
+
+    --primary: 215 20% 94%;
+    --primary-foreground: 222 47% 11%;
+
+    --accent: 215 20% 94%;               /* inverted: light 喺 dark */
+    --accent-soft: 222 18% 20%;
+    --accent-strong: 0 0% 100%;
+    --accent-foreground: 222 47% 11%;
+
+    --success: 152 45% 55%;
+    --success-soft: 152 30% 20%;
+    --success-strong: 152 50% 70%;
+    --success-foreground: 152 30% 10%;
+
+    --warning: 35 85% 62%;
+    --warning-soft: 35 30% 20%;
+    --warning-strong: 38 90% 72%;
+    --warning-foreground: 35 30% 10%;
+
+    --danger: 0 65% 60%;
+    --danger-soft: 0 35% 22%;
+    --danger-strong: 0 70% 72%;
+    --danger-foreground: 0 0% 100%;
+
+    --info: 215 60% 62%;
+    --info-soft: 215 30% 22%;
+    --info-strong: 215 65% 75%;
+    --info-foreground: 0 0% 100%;
+
+    /* Depth tones — dark mode variants */
+    --deepblue: 215 45% 48%;
+    --deepblue-soft: 215 30% 22%;
+    --deepblue-strong: 215 55% 75%;
+    --deepblue-foreground: 0 0% 100%;
+
+    --khaki: 36 28% 55%;
+    --khaki-soft: 36 15% 22%;
+    --khaki-strong: 40 35% 75%;
+    --khaki-foreground: 32 25% 10%;
+
+    --ice: 200 55% 62%;
+    --ice-soft: 200 30% 22%;
+    --ice-strong: 200 60% 75%;
+    --ice-foreground: 205 70% 10%;
+
+    /* Soft Apple-like shadows — dark mode 更深 */
+    --shadow-flat:
+      0 1px 2px -1px hsl(var(--shadow-color) / 0.4);
+
+    --shadow-raised-sm:
+      0 1px 2px 0 hsl(var(--shadow-color) / 0.3),
+      0 2px 6px -2px hsl(var(--shadow-color) / 0.35);
+
+    --shadow-raised:
+      0 2px 4px -2px hsl(var(--shadow-color) / 0.3),
+      0 6px 16px -4px hsl(var(--shadow-color) / 0.45),
+      0 0 0 1px hsl(var(--highlight-color) / 0.15);
+
+    --shadow-inset:
+      inset 0 1px 2px 0 hsl(var(--shadow-color) / 0.35),
+      inset 0 0 0 1px hsl(var(--highlight-color) / 0.1);
+
+    --shadow-pressed:
+      inset 0 2px 4px 0 hsl(var(--shadow-color) / 0.5);
+
+    --shadow-floating:
+      0 8px 16px -4px hsl(var(--shadow-color) / 0.5),
+      0 20px 40px -8px hsl(var(--shadow-color) / 0.6),
+      0 0 0 1px hsl(var(--highlight-color) / 0.15);
+
+    --shadow-sm: var(--shadow-flat);
+    --shadow-md: var(--shadow-raised-sm);
+    --shadow-lg: var(--shadow-raised);
+    --shadow-xl: var(--shadow-floating);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Base styles
+═══════════════════════════════════════════════════════════════════════════ */
 
 @layer base {
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
-      "Microsoft JhengHei", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
+      "PingFang TC", "Microsoft JhengHei", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* iOS：input font-size >= 16px 先唔會 auto-zoom */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input:not([type]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  @media (min-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    input[type="date"],
+    input[type="datetime-local"],
+    input[type="time"],
+    input:not([type]),
+    textarea,
+    select {
+      font-size: 14px;
+    }
+  }
+
+  /* Global focus style — 統一 keyboard a11y */
+  :focus-visible {
+    outline: 2px solid hsl(var(--accent));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Typography scale (semantic classes)
+   用例：<h1 className="text-display">標題</h1>
+═══════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .text-display {
+    @apply text-3xl font-bold tracking-tight;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+  .text-title {
+    @apply text-2xl font-semibold tracking-tight;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  .text-heading {
+    @apply text-lg font-semibold;
+    line-height: 1.3;
+  }
+  .text-subhead {
+    @apply text-base font-medium;
+    line-height: 1.4;
+  }
+  .text-body {
+    @apply text-sm;
+    line-height: 1.55;
+  }
+  .text-body-lg {
+    @apply text-base;
+    line-height: 1.6;
+  }
+  .text-caption {
+    @apply text-xs;
+    line-height: 1.4;
+    color: hsl(var(--foreground-muted));
+  }
+  .text-label {
+    @apply text-xs font-medium;
+    color: hsl(var(--foreground-muted));
+    line-height: 1.3;
+  }
+  /* Small caps label —— 參考 reference 嘅 "FOUNDATIONS / CONTROLS" style */
+  .text-label-caps {
+    @apply text-[11px] font-semibold uppercase;
+    color: hsl(var(--foreground-muted));
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+  }
+  .text-numeric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  /* Serif display —— hero headline 用，humanist feel */
+  .text-serif {
+    font-family: "Instrument Serif", "Cormorant Garamond", "Times New Roman",
+      "Songti TC", serif;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════════════════════════════ */
+
+@layer utilities {
+  /* iOS safe-area */
+  .h-dvh {
+    height: 100dvh;
+  }
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+  .max-h-dvh {
+    max-height: 100dvh;
+  }
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  }
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0.5rem);
+  }
+  .pl-safe {
+    padding-left: max(env(safe-area-inset-left), 0rem);
+  }
+  .pr-safe {
+    padding-right: max(env(safe-area-inset-right), 0rem);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+  /* Touch target minimum 44x44 (Apple HIG) */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     Neumorphic surface system
+     ─ .neu-raised: 凸起嘅 card
+     ─ .neu-flat: 淺淺 raised
+     ─ .neu-inset: 凹入 input
+     ─ .neu-pressed: 撳緊狀態
+     ═══════════════════════════════════════════════════════════════ */
+  .neu-raised {
+    background: hsl(var(--surface));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-raised);
+  }
+  .neu-raised-sm {
+    background: hsl(var(--surface));
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-raised-sm);
+  }
+  .neu-flat {
+    background: hsl(var(--surface));
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-flat);
+  }
+  .neu-inset {
+    background: hsl(var(--background));
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-inset);
+  }
+  .neu-pressed {
+    background: hsl(var(--muted));
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-pressed);
+  }
+  .neu-floating {
+    background: hsl(var(--surface-elevated));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-floating);
+  }
+
+  /* Backward-compat */
+  .surface {
+    background: hsl(var(--surface));
+    border-radius: var(--radius-md);
+  }
+  .surface-elevated {
+    background: hsl(var(--surface-elevated));
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-flat);
+  }
+  .surface-interactive {
+    background: hsl(var(--surface));
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-flat);
+    transition: box-shadow 180ms ease, transform 180ms ease;
+  }
+  .surface-interactive:hover {
+    box-shadow: var(--shadow-raised-sm);
+    transform: translateY(-1px);
+  }
+  .surface-interactive:active {
+    box-shadow: var(--shadow-pressed);
+    transform: translateY(0);
+  }
+
+  /* Paper grain —— subtle noise 喺 cream 上，增加手感 */
+  .grain {
+    position: relative;
+  }
+  .grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.35 0 0 0 0 0.25 0 0 0 0.12 0'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>");
+    background-size: 180px 180px;
+    border-radius: inherit;
+  }
+  .dark .grain::before {
+    opacity: 0.2;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Animations
+═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes slide-in {
   from {
@@ -45,4 +507,91 @@
 
 .animate-slide-in {
   animation: slide-in 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.15s ease-out;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TipTap editor styles (unchanged)
+═══════════════════════════════════════════════════════════════════════════ */
+
+.ProseMirror .collapsed-hidden {
+  display: none !important;
+}
+
+.collapsible-heading[data-collapsed="true"] > h1::after,
+.collapsible-heading[data-collapsed="true"] > h2::after,
+.collapsible-heading[data-collapsed="true"] > h3::after {
+  content: " …";
+  color: hsl(var(--foreground-muted));
+  font-weight: normal;
+}
+
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  overflow: hidden;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.4rem 0.6rem;
+  min-width: 80px;
+  vertical-align: top;
+  position: relative;
+}
+
+.ProseMirror th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-align: left;
+}
+
+.ProseMirror td > p,
+.ProseMirror th > p {
+  margin: 0;
+}
+
+.ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--accent) / 0.12);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ─── Notebook canvas — 令 tldraw background 透明，好等底層 container 嘅橫線/方格 pattern 睇到 ─── */
+.notebook-canvas-wrapper .tl-container,
+.notebook-canvas-wrapper .tl-background,
+.notebook-canvas-wrapper .tl-svg-container,
+.notebook-canvas-wrapper .tl-canvas {
+  background: transparent !important;
+  background-color: transparent !important;
 }

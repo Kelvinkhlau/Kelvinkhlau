@@ -14,3 +14,33 @@ export function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
+
+/**
+ * 骨架載入條 — 用嚟取代 spinner，減少感知延遲。
+ * <SkeletonList count={5} />
+ */
+export function SkeletonList({ count = 3 }: { count?: number }) {
+  return (
+    <div className="space-y-2" role="status" aria-label="載入中" aria-live="polite">
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="h-14 rounded-lg bg-muted/50 animate-pulse"
+          aria-hidden
+        />
+      ))}
+      <span className="sr-only">載入中…</span>
+    </div>
+  );
+}
+
+export function SkeletonBlock({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`rounded-lg bg-muted/50 animate-pulse ${className}`}
+      role="status"
+      aria-label="載入中"
+      aria-hidden
+    />
+  );
+}

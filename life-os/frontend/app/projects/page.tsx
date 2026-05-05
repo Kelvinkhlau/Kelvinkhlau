@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Project, type ProjectStatus } from "@/lib/api";
+import { api, type Project, type ProjectCreate, type ProjectStatus } from "@/lib/api";
 import { toast } from "@/components/Toast";
 import { Loading, EmptyState } from "@/components/Loading";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -18,6 +18,7 @@ const STATUSES: { value: ProjectStatus; label: string }[] = [
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState("");
+  const [newParentId, setNewParentId] = useState<number | null>(null);
   const [filter, setFilter] = useState<ProjectStatus | "all">("active");
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
@@ -27,11 +28,17 @@ export default function ProjectsPage() {
       api.listProjects(filter === "all" ? undefined : { status: filter }),
   });
 
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ["projects", "all"],
+    queryFn: () => api.listProjects(),
+  });
+
   const createMutation = useMutation({
-    mutationFn: (payload: { name: string }) => api.createProject(payload),
+    mutationFn: (payload: ProjectCreate) => api.createProject(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       setNewName("");
+      setNewParentId(null);
       toast.success("已新增");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -39,28 +46,35 @@ export default function ProjectsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteProject(id),
-    onSuccess: (_, id) => {
-      queryClient.setQueryData<Project[]>(["projects", filter], (old) =>
-        old?.filter((p) => p.id !== id)
-      );
+    onMutate: async (id) => {
+      const key = ["projects", filter];
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<Project[]>(key);
+      queryClient.setQueryData<Project[]>(key, (old) => old?.filter((p) => p.id !== id));
+      return { prev, key };
+    },
+    onError: (e, _id, ctx) => {
+      if (ctx?.prev && ctx.key) queryClient.setQueryData(ctx.key, ctx.prev);
+      toast.error((e as Error).message);
+    },
+    onSuccess: () => {
       toast.success("已刪除");
     },
-    onError: (e) => toast.error((e as Error).message),
   });
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    createMutation.mutate({ name: newName.trim() });
+    createMutation.mutate({
+      name: newName.trim(),
+      ...(newParentId ? { parent_id: newParentId } : {}),
+    });
   };
 
   return (
-    <main className="min-h-screen p-4 max-w-2xl mx-auto">
+    <main className="min-h-full p-4 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Projects</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 首頁
-        </Link>
       </div>
 
       {/* Add form */}
@@ -75,6 +89,20 @@ export default function ProjectsPage() {
           placeholder="Project 名"
           className="flex-1 px-3 py-2 border border-border rounded-md bg-background"
         />
+        <select
+          value={newParentId ?? ""}
+          onChange={(e) =>
+            setNewParentId(e.target.value ? Number(e.target.value) : null)
+          }
+          className="px-3 py-2 border border-border rounded-md bg-background text-sm"
+        >
+          <option value="">無父專案</option>
+          {allProjects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
           disabled={!newName.trim() || createMutation.isPending}
@@ -143,6 +171,14 @@ export default function ProjectsPage() {
                       <div className="font-medium break-words">
                         {project.name}
                       </div>
+                      {project.parent_id && (() => {
+                        const parent = allProjects.find((p) => p.id === project.parent_id);
+                        return parent ? (
+                          <div className="text-xs text-muted-foreground">
+                            ↳ {parent.name}
+                          </div>
+                        ) : null;
+                      })()}
                       {project.description && (
                         <div className="text-sm text-muted-foreground mt-1 break-words">
                           {project.description}

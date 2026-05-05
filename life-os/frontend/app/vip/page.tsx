@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type VipSender } from "@/lib/api";
@@ -49,12 +48,9 @@ export default function VipPage() {
   };
 
   return (
-    <main className="min-h-screen p-4 max-w-2xl mx-auto">
+    <main className="min-h-full p-4 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">VIP 白名單</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 首頁
-        </Link>
       </div>
 
       <p className="text-sm text-muted-foreground mb-4">

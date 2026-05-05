@@ -11,6 +11,17 @@ import {
   serializeRegistrationCredential,
 } from "@/lib/webauthn";
 
+function guessDeviceName(): string {
+  if (typeof navigator === "undefined") return "Unknown device";
+  const ua = navigator.userAgent;
+  if (/iPad/.test(ua)) return "iPad";
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/Macintosh/.test(ua)) return "Mac";
+  if (/Android/.test(ua)) return "Android";
+  if (/Windows/.test(ua)) return "Windows";
+  return "Unknown device";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -29,7 +40,12 @@ export default function LoginPage() {
       })) as PublicKeyCredential | null;
       if (!cred) throw new Error("User cancelled");
       const serialized = serializeRegistrationCredential(cred);
-      const res = await api.passkeyRegisterFinish(start.challenge_token, serialized);
+      const deviceName = guessDeviceName();
+      const res = await api.passkeyRegisterFinish(
+        start.challenge_token,
+        serialized,
+        deviceName
+      );
       setToken(res.token);
       setInfo(`註冊成功 — ${res.user.name}。正在跳轉…`);
       setTimeout(() => router.push("/"), 600);
@@ -64,7 +80,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen p-8 max-w-md mx-auto flex flex-col justify-center">
+    <main className="min-h-dvh p-8 max-w-md mx-auto flex flex-col justify-center">
       <h1 className="text-2xl font-bold mb-6 text-center">登入 life-os</h1>
 
       <div className="space-y-3">
@@ -88,12 +104,12 @@ export default function LoginPage() {
       </div>
 
       {info && (
-        <div className="mt-4 p-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded">
+        <div className="mt-4 p-3 text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded">
           {info}
         </div>
       )}
       {error && (
-        <div className="mt-4 p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
+        <div className="mt-4 p-3 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded">
           {error}
         </div>
       )}

@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, type DailyReport } from "@/lib/api";
 import { Loading } from "@/components/Loading";
+import { toast } from "@/components/Toast";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -25,15 +25,27 @@ export default function ReportPage() {
     queryFn: () => api.dailyReport({ report_date: reportDate }),
   });
 
+  const [aiSummary, setAiSummary] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAiSummary = async () => {
+    setAiLoading(true);
+    try {
+      const res = await api.dailyReportAiSummary({ report_date: reportDate });
+      setAiSummary(res.summary);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const isToday = reportDate === todayStr();
 
   return (
-    <main className="min-h-screen max-w-2xl mx-auto p-4">
+    <main className="min-h-full max-w-2xl mx-auto p-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold">日報</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 首頁
-        </Link>
       </div>
 
       {/* Date picker */}
@@ -52,6 +64,25 @@ export default function ReportPage() {
             className="text-sm text-blue-600 hover:underline"
           >
             返回今日
+          </button>
+        )}
+      </div>
+
+      {/* AI Summary */}
+      <div className="mb-4">
+        {aiSummary ? (
+          <div className="p-4 border border-purple-200 bg-purple-50 dark:bg-purple-950 dark:border-purple-800 rounded-lg">
+            <div className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-2">AI 摘要</div>
+            <p className="text-sm whitespace-pre-wrap">{aiSummary}</p>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAiSummary}
+            disabled={aiLoading || isLoading}
+            className="px-4 py-2 text-sm font-medium border border-purple-300 text-purple-600 rounded hover:bg-purple-50 disabled:opacity-50"
+          >
+            {aiLoading ? "AI 生成中…" : "AI 智能摘要"}
           </button>
         )}
       </div>

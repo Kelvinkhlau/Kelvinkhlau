@@ -40,11 +40,11 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 pb-safe"
       onClick={onCancel}
     >
       <div
-        className="bg-background border border-border rounded-lg shadow-xl p-6 max-w-sm w-full mx-4"
+        className="bg-background border border-border rounded-lg shadow-xl p-6 max-w-sm w-full max-h-[calc(100dvh-2rem)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-labelledby="confirm-title"

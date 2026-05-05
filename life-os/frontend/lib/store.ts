@@ -7,11 +7,14 @@ type Theme = "light" | "dark" | "system";
 interface AppState {
   token: string | null;
   theme: Theme;
+  privacyMode: boolean;
   setToken: (token: string | null) => void;
   setTheme: (theme: Theme) => void;
+  setPrivacyMode: (on: boolean) => void;
+  togglePrivacyMode: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   token:
     typeof window !== "undefined"
       ? window.localStorage.getItem("lifeos.token")
@@ -20,6 +23,10 @@ export const useAppStore = create<AppState>((set) => ({
     (typeof window !== "undefined"
       ? (window.localStorage.getItem("lifeos.theme") as Theme)
       : null) ?? "system",
+  privacyMode:
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("lifeos.privacyMode") === "1"
+      : false,
 
   setToken: (token) => {
     if (typeof window !== "undefined") {
@@ -42,5 +49,20 @@ export const useAppStore = create<AppState>((set) => ({
       document.documentElement.classList.toggle("dark", isDark);
     }
     set({ theme });
+  },
+
+  setPrivacyMode: (on) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("lifeos.privacyMode", on ? "1" : "0");
+    }
+    set({ privacyMode: on });
+  },
+
+  togglePrivacyMode: () => {
+    const next = !get().privacyMode;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("lifeos.privacyMode", next ? "1" : "0");
+    }
+    set({ privacyMode: next });
   },
 }));

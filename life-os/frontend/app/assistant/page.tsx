@@ -17,8 +17,27 @@ const ACTION_LABELS: Record<string, string> = {
   create_todo: "已建 Todo",
   create_idea: "已建 Idea",
   create_project: "已建 Project",
+  create_calendar_event: "已加入行事曆",
+  create_note: "已建筆記",
+  create_expense: "已記錄消費",
   chat: "",
 };
+
+/** 將 created_type 變做筆記頁 link。calendar_event / note / expense 特殊處理。 */
+function buildCreatedLink(createdType: string, createdId: number): string {
+  switch (createdType) {
+    case "project":
+      return `/projects/detail?id=${createdId}`;
+    case "calendar_event":
+      return "/calendar";
+    case "note":
+      return "/notes";
+    case "expense":
+      return "/expenses";
+    default:
+      return `/${createdType}s`;
+  }
+}
 
 export default function AssistantPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -72,7 +91,10 @@ export default function AssistantPage() {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -81,7 +103,7 @@ export default function AssistantPage() {
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         if (blob.size === 0) return;
 
         setTranscribing(true);
@@ -113,12 +135,9 @@ export default function AssistantPage() {
   }, [recording]);
 
   return (
-    <main className="min-h-screen flex flex-col max-w-2xl mx-auto">
+    <main className="min-h-full flex flex-col max-w-2xl mx-auto">
       <div className="flex items-center justify-between p-4 border-b border-border">
         <h1 className="text-xl font-bold">AI 助手</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 首頁
-        </Link>
       </div>
 
       {/* Chat messages */}
@@ -126,10 +145,15 @@ export default function AssistantPage() {
         {messages.length === 0 && (
           <div className="text-center text-muted-foreground py-12">
             <p className="text-lg mb-2">你好！我係 life-os AI 助手。</p>
-            <p className="text-sm">
-              你可以同我講：「提醒我聽日交報告」、「記低一個 idea」、或者問我嘢。
-            </p>
-            <p className="text-sm mt-2">
+            <p className="text-sm">你可以同我講：</p>
+            <ul className="text-sm mt-2 space-y-1 text-left inline-block">
+              <li>• 「提醒我聽日交報告」→ Todo</li>
+              <li>• 「聽日下晝 3 點同 Alice 開會」→ 行事曆</li>
+              <li>• 「啱啱 Starbucks 買咖啡 45 蚊」→ 消費</li>
+              <li>• 「記低今日會議要點…」→ 筆記</li>
+              <li>• 「我諗到個 app idea…」→ Idea</li>
+            </ul>
+            <p className="text-sm mt-3">
               撳下面個 mic 按鈕，可以用廣東話語音輸入。
             </p>
           </div>
@@ -156,11 +180,7 @@ export default function AssistantPage() {
                       {" "}
                       →{" "}
                       <Link
-                        href={
-                          msg.createdType === "project"
-                            ? `/projects/detail?id=${msg.createdId}`
-                            : `/${msg.createdType}s`
-                        }
+                        href={buildCreatedLink(msg.createdType, msg.createdId)}
                         className="underline"
                       >
                         睇下

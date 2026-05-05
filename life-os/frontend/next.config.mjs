@@ -14,6 +14,14 @@ const nextConfig = {
           source: "/api/:path*",
           destination: `http://localhost:${process.env.BACKEND_PORT || "3100"}/api/:path*`,
         },
+        {
+          source: "/racing-proxy",
+          destination: `http://localhost:${process.env.BACKEND_PORT || "3100"}/racing-proxy/`,
+        },
+        {
+          source: "/racing-proxy/:path*",
+          destination: `http://localhost:${process.env.BACKEND_PORT || "3100"}/racing-proxy/:path*`,
+        },
       ];
     }
     return [];

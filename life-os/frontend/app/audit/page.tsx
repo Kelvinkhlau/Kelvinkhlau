@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuditLogEntry } from "@/lib/api";
@@ -26,12 +25,9 @@ export default function AuditPage() {
   });
 
   return (
-    <main className="min-h-screen max-w-2xl mx-auto p-4">
+    <main className="min-h-full max-w-2xl mx-auto p-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold">審計記錄</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 首頁
-        </Link>
       </div>
 
       {/* Filter */}

@@ -19,7 +19,7 @@ export default function AuthCallbackPage() {
   }, []);
 
   return (
-    <main className="min-h-screen p-8 max-w-md mx-auto flex flex-col justify-center">
+    <main className="min-h-dvh p-8 max-w-md mx-auto flex flex-col justify-center">
       <div className="text-center">
         {status === null && <p>處理中…</p>}
         {status === "ok" && (
