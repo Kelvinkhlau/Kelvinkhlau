@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 同時跑 backend (8000) + frontend (3000)
+# 跑 backend (:3100) — frontend 用 static export 由 backend serve
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

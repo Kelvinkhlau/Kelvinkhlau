@@ -63,3 +63,14 @@ coverage.xml
 
 # Build artefacts
 backend/app/static/
+
+# User data (uploaded attachments / vault files / deployment certs / personal docs)
+backend/attachments/
+backend/vault/
+deployment/certs/
+*.crt
+docs/*.pdf
+
+# IDE / Claude scratch
+.claude/
+CLAUDE.md.bak

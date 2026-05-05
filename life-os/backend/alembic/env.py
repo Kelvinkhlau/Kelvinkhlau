@@ -8,6 +8,11 @@ from sqlalchemy import engine_from_config, pool
 from app.config import get_settings
 from app.db import Base
 from app.models import Email, EmailClassification, User  # noqa: F401  (import for autogenerate)
+from app.models.subscription import Subscription  # noqa: F401
+from app.models.budget import Budget  # noqa: F401
+from app.models.bank_account import BankAccount  # noqa: F401
+from app.models.stock_holding import StockHolding  # noqa: F401
+from app.models.smart_label import SmartLabel  # noqa: F401
 
 config = context.config
 settings = get_settings()

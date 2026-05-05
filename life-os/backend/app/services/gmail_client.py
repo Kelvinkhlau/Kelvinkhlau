@@ -10,9 +10,18 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
+
+# Google 授權時會回傳額外 scope（例如 calendar 會附帶 calendar.readonly），
+# 令 oauthlib 嘅嚴格 scope 檢查失敗。放寬呢個檢查。
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from email.utils import parseaddr, parsedate_to_datetime
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formataddr, parseaddr, parsedate_to_datetime
 from typing import Any
 
 from google.auth.transport.requests import Request
@@ -35,14 +44,25 @@ def _gmail_is_transient(exc: BaseException) -> bool:
     # 網絡 / SSL / timeout —— retry
     return True
 
-# Google API scopes — Gmail 只讀 + Calendar 只讀
+# Google API scopes — Gmail 讀寫 + Calendar 只讀
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/calendar",
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
+
+
+@dataclass
+class ParsedAttachment:
+    """Gmail attachment metadata (content 由 Gmail API lazy fetch)。"""
+
+    gmail_attachment_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
 
 
 @dataclass
@@ -60,6 +80,7 @@ class ParsedMessage:
     body_html: str | None
     received_at: datetime
     has_attachment: bool
+    attachments: list[ParsedAttachment]
 
 
 def _build_flow(state: str | None = None) -> Flow:
@@ -157,6 +178,18 @@ class GmailClient:
         )
         return [m["id"] for m in resp.get("messages", [])]
 
+    def list_sent_message_ids(self, max_results: int = 50) -> list[str]:
+        """攞最近 N 封寄件備份嘅 message IDs。"""
+        resp = retry_call(
+            lambda: self.service.users()
+            .messages()
+            .list(userId="me", maxResults=max_results, labelIds=["SENT"])
+            .execute(),
+            should_retry=_gmail_is_transient,
+            label="gmail.messages.list(SENT)",
+        )
+        return [m["id"] for m in resp.get("messages", [])]
+
     def get_profile_history_id(self) -> str:
         """攞 account 當前 historyId（用嚟 incremental sync）。"""
         profile = retry_call(
@@ -216,6 +249,33 @@ class GmailClient:
         )
         return _parse_message(msg)
 
+    def send_message(self, raw_base64: str) -> dict[str, Any]:
+        """發送 email — raw_base64 係 base64url-encoded RFC 5322 message。"""
+        return retry_call(
+            lambda: self.service.users()
+            .messages()
+            .send(userId="me", body={"raw": raw_base64})
+            .execute(),
+            should_retry=_gmail_is_transient,
+            label="gmail.messages.send",
+        )
+
+    def get_attachment_bytes(self, message_id: str, attachment_id: str) -> bytes:
+        """攞 Gmail attachment 嘅 raw bytes（會 decode base64url）。"""
+        resp = retry_call(
+            lambda: self.service.users()
+            .messages()
+            .attachments()
+            .get(userId="me", messageId=message_id, id=attachment_id)
+            .execute(),
+            should_retry=_gmail_is_transient,
+            label=f"gmail.attachments.get({attachment_id[:20]})",
+        )
+        data = resp.get("data", "")
+        if not data:
+            return b""
+        return base64.urlsafe_b64decode(data)
+
 
 def _parse_message(msg: dict[str, Any]) -> ParsedMessage:
     """將 Gmail API 嘅 raw message 解析成 ParsedMessage。"""
@@ -240,7 +300,8 @@ def _parse_message(msg: dict[str, Any]) -> ParsedMessage:
 
     # Extract body
     body_text, body_html = _extract_body(payload)
-    has_attachment = _has_attachment(payload)
+    attachments = _extract_attachments(payload)
+    has_attachment = bool(attachments)
 
     return ParsedMessage(
         gmail_message_id=msg["id"],
@@ -254,7 +315,36 @@ def _parse_message(msg: dict[str, Any]) -> ParsedMessage:
         body_html=body_html,
         received_at=received_at,
         has_attachment=has_attachment,
+        attachments=attachments,
     )
+
+
+def _extract_attachments(payload: dict[str, Any]) -> list[ParsedAttachment]:
+    """Depth-first — collect ParsedAttachment list.
+
+    只係 parts 有 filename + body.attachmentId 先當 attachment
+    （inline image 無 filename 唔算）。
+    """
+    found: list[ParsedAttachment] = []
+
+    def walk(part: dict[str, Any]) -> None:
+        filename = part.get("filename") or ""
+        body = part.get("body", {}) or {}
+        att_id = body.get("attachmentId")
+        if filename and att_id:
+            found.append(
+                ParsedAttachment(
+                    gmail_attachment_id=att_id,
+                    filename=filename,
+                    mime_type=part.get("mimeType", "application/octet-stream"),
+                    size_bytes=int(body.get("size", 0) or 0),
+                )
+            )
+        for sub in part.get("parts", []) or []:
+            walk(sub)
+
+    walk(payload)
+    return found
 
 
 def _extract_body(payload: dict[str, Any]) -> tuple[str, str | None]:
@@ -296,3 +386,78 @@ def _has_attachment(payload: dict[str, Any]) -> bool:
         return any(walk(sub) for sub in part.get("parts", []) or [])
 
     return walk(payload)
+
+
+# ─── Email sending helpers ───────────────────────────────────────────────────
+
+def _encode_raw(msg: MIMEBase) -> str:
+    """將 MIME message 轉成 Gmail API 要嘅 base64url string。"""
+    return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+
+
+def _attach_files(
+    msg: MIMEMultipart,
+    attachments: list[tuple[str, bytes, str]],
+) -> None:
+    """Add file attachments to a MIMEMultipart message.
+
+    attachments: list of (filename, content_bytes, content_type)
+    """
+    for filename, content, content_type in attachments:
+        maintype, subtype = (
+            content_type.split("/", 1)
+            if "/" in content_type
+            else ("application", "octet-stream")
+        )
+        part = MIMEBase(maintype, subtype)
+        part.set_payload(content)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment", filename=filename)
+        msg.attach(part)
+
+
+def build_reply_message(
+    from_email: str,
+    from_name: str,
+    to: str,
+    subject: str,
+    body: str,
+    in_reply_to: str,
+    references: str,
+    thread_id: str | None = None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
+) -> tuple[str, str | None]:
+    """建立回覆 email，返回 (raw_base64, thread_id)。支援附件。"""
+    if attachments:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        _attach_files(msg, attachments)
+    else:
+        msg = MIMEText(body, "plain", "utf-8")
+    msg["From"] = formataddr((from_name, from_email))
+    msg["To"] = to
+    msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+    msg["In-Reply-To"] = in_reply_to
+    msg["References"] = references
+    return _encode_raw(msg), thread_id
+
+
+def build_new_message(
+    from_email: str,
+    from_name: str,
+    to: str,
+    subject: str,
+    body: str,
+    attachments: list[tuple[str, bytes, str]] | None = None,
+) -> str:
+    """建立新 email，返回 raw_base64。支援附件。"""
+    if attachments:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        _attach_files(msg, attachments)
+    else:
+        msg = MIMEText(body, "plain", "utf-8")
+    msg["From"] = formataddr((from_name, from_email))
+    msg["To"] = to
+    msg["Subject"] = subject
+    return _encode_raw(msg)

@@ -36,6 +36,31 @@ class CalendarEvent(Base):
     end_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     all_day: Mapped[bool] = mapped_column(default=False, nullable=False)
 
+    # 分類 + 顏色
+    category: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="personal"
+    )  # personal / work / family / friends / other
+    color: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="#3b82f6"
+    )  # hex color
+
+    # 重複
+    recurrence: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # none / daily / weekly / monthly / yearly / weekdays / custom RRULE
+
+    # 可見度 + 忙碌
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="default"
+    )  # default / public / private
+    busy: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+    # 提醒（分鐘數，逗號分隔，例如 "10,30"）
+    reminders: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Google Meet / 會議連結
+    conference_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # 狀態
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="confirmed"

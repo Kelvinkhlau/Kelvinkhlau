@@ -10,6 +10,7 @@ class ProjectBase(BaseModel):
     description: str | None = None
     status: str = "active"  # active / paused / done / archived
     color: str | None = Field(None, max_length=20)
+    parent_id: int | None = None
 
 
 class ProjectCreate(ProjectBase):
@@ -21,6 +22,7 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     status: str | None = None
     color: str | None = Field(None, max_length=20)
+    parent_id: int | None = None
 
 
 class ProjectOut(ProjectBase):

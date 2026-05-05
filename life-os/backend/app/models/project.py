@@ -26,6 +26,10 @@ class Project(Base):
         ForeignKey("users.id"), index=True, nullable=False
     )
 
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 

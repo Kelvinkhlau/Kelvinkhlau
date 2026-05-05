@@ -32,7 +32,7 @@ async def add_muted(
 ) -> MutedSender:
     sender_email = payload.email.lower().strip()
 
-    # 防止重複
+    # 已經封鎖 — 直接返回現有記錄
     existing = db.execute(
         select(MutedSender).where(
             MutedSender.user_id == user.id,
@@ -40,7 +40,7 @@ async def add_muted(
         )
     ).scalars().first()
     if existing:
-        raise HTTPException(status_code=409, detail="已經喺封鎖名單入面")
+        return existing
 
     muted = MutedSender(
         user_id=user.id,

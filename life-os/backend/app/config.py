@@ -46,16 +46,25 @@ class Settings(BaseSettings):
     # Gmail OAuth2
     google_client_id: str | None = None
     google_client_secret: str | None = None
-    google_redirect_uri: str = "http://localhost:8000/api/auth/gmail/callback"
+    google_redirect_uri: str = "http://localhost:3100/api/auth/gmail/callback"
+
+    # iCloud Mail (IMAP)
+    icloud_email: str | None = None
+    icloud_app_password: str | None = None
+
+    # Google Calendar — 額外要 sync 嘅 calendar IDs（逗號分隔）
+    extra_calendar_ids: str = ""
 
     # 用戶
     owner_email: str = "owner@example.com"
     owner_name: str = "Owner"
 
     # Backend 公開 URL（部署時係 Tailscale URL）
-    public_base_url: str = "http://localhost:8000"
-    # Frontend URL（開發時係 :3000，部署時同 public_base_url 一樣）
-    frontend_url: str = "http://localhost:3000"
+    public_base_url: str = "http://localhost:3100"
+    # Frontend URL（static export 同 backend 同一個 origin）
+    frontend_url: str = "http://localhost:3100"
+    # Dev 用：CORS 允許嘅 origin（逗號分隔），production 唔用 CORS（同 origin）
+    cors_origins: str = "http://localhost:3000,http://localhost:3100,http://127.0.0.1:3000,http://127.0.0.1:3100"
 
     # WebAuthn / Passkey
     # rp_id 必須係 frontend domain（冇 scheme / port），例如 "localhost" 或 "lifeos.tail-xxx.ts.net"
@@ -64,6 +73,11 @@ class Settings(BaseSettings):
     # JWT
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 30  # 30 日
+
+    # Web Push (VAPID) — 用 `python scripts/generate_vapid_keys.py` 產生一次，放喺 .env
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_email: str = "mailto:owner@example.com"
 
     @property
     def is_production(self) -> bool:

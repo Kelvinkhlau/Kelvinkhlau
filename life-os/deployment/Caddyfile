@@ -1,29 +1,78 @@
-# Caddy reverse proxy for life-os
-# 用 Tailscale 嘅 hostname，自動 HTTPS（Tailscale 提供 cert）
+# ─────────────────────────────────────────────────────────────
+# Fixed URL scheme for mini (user-approved 2026-04-24, do not change without Kelvin's re-approval)
+#
+#   :443   →  SignalTech      (docker frontend nginx @ 127.0.0.1:8080)
+#   :8443  →  HorseRacing     (python Flask @ 127.0.0.1:8000)
+#   :9443  →  life-os         (uvicorn @ 127.0.0.1:3101)
+#
+# The single FQDN (kelvin-moltbotmac-mini.tailba8477.ts.net) serves all
+# three on distinct ports. TLS certs come from `tailscale cert` (renewed
+# manually; see DEPLOYMENT_URLS.md in each repo for the renewal plan).
+#
+# Tailscale Serve MUST remain off — `tailscale serve reset` was run on
+# 2026-04-24 so Caddy is the sole :443/:8443/:9443 gateway. If Tailscale
+# Serve is re-enabled with a / → :8080 rule, it will mask Caddy's :443
+# block from tailnet peers (kernel short-circuits for mini-local).
+# ─────────────────────────────────────────────────────────────
 
-# 將 lifeos 換成你 Mac mini 嘅 Tailscale hostname
-lifeos.your-tailnet.ts.net {
-    # FastAPI backend
-    reverse_proxy 127.0.0.1:8000
+# SignalTech — primary app on default :443
+kelvin-moltbotmac-mini.tailba8477.ts.net {
+	tls /Users/kelvinkhlau/Developer/kelvinkhlau/life-os/deployment/certs/tailscale.crt /Users/kelvinkhlau/Developer/kelvinkhlau/life-os/deployment/certs/tailscale.key
 
-    # Logging
-    log {
-        output file /var/log/caddy/lifeos.access.log
-        format json
-    }
+	log {
+		output file /Users/kelvinkhlau/Library/Logs/caddy-signaltech.access.log
+		format json
+	}
 
-    # 安全 headers
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "no-referrer"
-    }
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "no-referrer"
+	}
 
-    # WebSocket（emails real-time push）
-    @websocket {
-        header Connection *Upgrade*
-        header Upgrade websocket
-    }
-    reverse_proxy @websocket 127.0.0.1:8000
+	# WebSocket upgrades for /ws/*
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket 127.0.0.1:8080
+
+	# SPA + API + static — frontend nginx already handles /api → backend:8000
+	reverse_proxy 127.0.0.1:8080
+}
+
+# HorseRacing — :8443
+kelvin-moltbotmac-mini.tailba8477.ts.net:8443 {
+	tls /Users/kelvinkhlau/Developer/kelvinkhlau/life-os/deployment/certs/tailscale.crt /Users/kelvinkhlau/Developer/kelvinkhlau/life-os/deployment/certs/tailscale.key
+
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+
+	reverse_proxy 127.0.0.1:8000
+}
+
+# life-os — :9443 (moved from :443 on 2026-04-24 per user directive)
+kelvin-moltbotmac-mini.tailba8477.ts.net:9443 {
+	tls /Users/kelvinkhlau/Developer/kelvinkhlau/life-os/deployment/certs/tailscale.crt /Users/kelvinkhlau/Developer/kelvinkhlau/life-os/deployment/certs/tailscale.key
+
+	log {
+		output file /Users/kelvinkhlau/Library/Logs/caddy-lifeos.access.log
+		format json
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "no-referrer"
+	}
+
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket 127.0.0.1:3101
+	reverse_proxy 127.0.0.1:3101
 }

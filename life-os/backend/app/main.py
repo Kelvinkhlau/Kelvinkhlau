@@ -1,16 +1,20 @@
 """FastAPI 入口。"""
 
 import asyncio
+import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.api import assistant, audit, auth, calendar, emails, expenses, export, ideas, muted, notes, projects, report, todos, vip, voice, ws
+from app.api import assistant, audit, auth, bank_accounts, budgets, calendar, emails, expenses, export, family_members, ideas, ledgers, loans, muted, notebooks, notes, projects, push, relations, report, smart_labels, stocks, subscriptions, today, todos, transfers, vault, vip, voice, ws
 from app.config import get_settings
 from app.services.ws_manager import manager as ws_manager
+from app.services.icloud_idle_watcher import start_icloud_idle_watcher, stop_icloud_idle_watcher
 from app.workers.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
@@ -21,10 +25,12 @@ async def lifespan(app: FastAPI):
     """App 啟動 / 關閉時嘅 hook。"""
     # 綁定主 event loop，俾 background thread broadcast 事件
     ws_manager.bind_loop(asyncio.get_running_loop())
-    # 啟動時：起背景 scheduler
+    # 啟動時：起背景 scheduler + iCloud IDLE watcher
     start_scheduler()
+    start_icloud_idle_watcher()
     yield
-    # 關閉時：停 scheduler
+    # 關閉時：停 scheduler + IDLE watcher
+    stop_icloud_idle_watcher()
     stop_scheduler()
 
 
@@ -35,14 +41,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 開發環境允許 Next.js dev server
+# 開發環境允許 Next.js dev server — 用白名單，唔用 "*"
 if not settings.is_production:
+    _origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
     )
 
 # API routes
@@ -55,13 +62,35 @@ app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(vip.router, prefix="/api/vip", tags=["vip"])
 app.include_router(muted.router, prefix="/api/muted", tags=["muted"])
 app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
+app.include_router(transfers.router, prefix="/api/transfers", tags=["transfers"])
+app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["subscriptions"])
+app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
+app.include_router(bank_accounts.router, prefix="/api/bank-accounts", tags=["bank-accounts"])
+app.include_router(stocks.router, prefix="/api/stocks", tags=["stocks"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
+app.include_router(notebooks.router, prefix="/api/notebooks", tags=["notebooks"])
 app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 app.include_router(report.router, prefix="/api/report", tags=["report"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
+app.include_router(smart_labels.router, prefix="/api/smart-labels", tags=["smart-labels"])
 app.include_router(assistant.router, prefix="/api/assistant", tags=["assistant"])
+app.include_router(relations.router, prefix="/api/relations", tags=["relations"])
+app.include_router(today.router, prefix="/api/today", tags=["today"])
+app.include_router(ledgers.router, prefix="/api/ledgers", tags=["ledgers"])
+app.include_router(loans.router, prefix="/api/loans", tags=["loans"])
+app.include_router(family_members.router, prefix="/api/family-members", tags=["family-members"])
+app.include_router(vault.router, prefix="/api/vault", tags=["vault"])
+app.include_router(push.router, prefix="/api", tags=["push"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
+
+
+@app.post("/api/recurring/generate")
+async def generate_recurring_now() -> dict:
+    """手動觸發 recurring expense 產生 — 無 auth，方便 curl 測試。"""
+    from app.services.recurring_expense import generate_recurring_expenses
+
+    return generate_recurring_expenses()
 
 
 @app.get("/api/health")
@@ -227,7 +256,111 @@ async def sync_now_public(limit: int = 500, classify: bool = True) -> dict:
         db.close()
 
 
+
+# 賽馬系統 reverse proxy — 將 /racing-proxy/* 轉發去 localhost:8000
+_racing_client = httpx.AsyncClient(base_url="http://127.0.0.1:8000", timeout=30.0)
+
+
+@app.api_route("/racing-proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def racing_proxy(request: Request, path: str) -> Response:
+    """Reverse proxy to horse racing system on port 8000."""
+    url = f"/{path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in ("host", "connection", "transfer-encoding")
+    }
+
+    body = await request.body() if request.method in ("POST", "PUT") else None
+
+    resp = await _racing_client.request(
+        method=request.method,
+        url=url,
+        headers=headers,
+        content=body,
+    )
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers={
+            k: v for k, v in resp.headers.items()
+            if k.lower() not in ("transfer-encoding", "connection", "content-encoding")
+        },
+    )
+
+
 # Production：serve frontend static files（同一個 origin）
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+# 用自訂 SPA handler 取代 StaticFiles，解決 Safari back 鍵 404 問題
+_static_dir = Path(__file__).parent / "static"
+
+if _static_dir.exists():
+    # /_next 等靜態資源用 StaticFiles（高效能 + cache headers）
+    _next_dir = _static_dir / "_next"
+    if _next_dir.exists():
+        app.mount("/_next", StaticFiles(directory=str(_next_dir)), name="next-assets")
+    _icons_dir = _static_dir / "icons"
+    if _icons_dir.exists():
+        app.mount("/icons", StaticFiles(directory=str(_icons_dir)), name="icons")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str) -> Response:
+        """SPA fallback — 解決 Safari back 鍵 404 問題。
+
+        優先順序：
+        1. 精確匹配靜態檔案（.js, .css, .png, manifest.json 等）
+        2. 嘗試 {path}.html（Next.js static export 格式）
+        3. 嘗試 {path}/index.html
+        4. Fallback 到 404.html（Next.js 404 頁面）
+
+        API paths (/api/*, /ws/*) 唔會經呢度 — 如果 router 冇 match，
+        就要返 JSON 404，唔好俾 frontend 當 HTML 再塞入 error message。
+        """
+        if full_path.startswith("api/") or full_path.startswith("ws/"):
+            return Response(
+                content='{"detail":"Not Found"}',
+                media_type="application/json",
+                status_code=404,
+            )
+        # 安全檢查：防止路徑穿越
+        try:
+            resolved = (_static_dir / full_path).resolve()
+            if not str(resolved).startswith(str(_static_dir.resolve())):
+                return FileResponse(
+                    _static_dir / "404.html", media_type="text/html", status_code=404
+                )
+        except (ValueError, OSError):
+            return FileResponse(
+                _static_dir / "404.html", media_type="text/html", status_code=404
+            )
+
+        # 1. 精確匹配（靜態資源：.js, .css, .png, .json, .ico 等）
+        exact = _static_dir / full_path
+        if exact.is_file():
+            content_type = mimetypes.guess_type(str(exact))[0] or "application/octet-stream"
+            return FileResponse(exact, media_type=content_type)
+
+        # 2. 嘗試 {path}.html（Next.js static export: /inbox/detail → /inbox/detail.html）
+        html_file = _static_dir / f"{full_path}.html"
+        if html_file.is_file():
+            return FileResponse(html_file, media_type="text/html")
+
+        # 3. 嘗試 {path}/index.html
+        index_file = _static_dir / full_path / "index.html"
+        if index_file.is_file():
+            return FileResponse(index_file, media_type="text/html")
+
+        # 4. Root path
+        if full_path == "" or full_path == "/":
+            root_index = _static_dir / "index.html"
+            if root_index.is_file():
+                return FileResponse(root_index, media_type="text/html")
+
+        # 5. Fallback → 404.html
+        not_found = _static_dir / "404.html"
+        if not_found.is_file():
+            return FileResponse(not_found, media_type="text/html", status_code=404)
+
+        return Response("Not Found", status_code=404)

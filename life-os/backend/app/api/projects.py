@@ -22,6 +22,7 @@ def _serialize(project: Project, todo_count: int, done_count: int) -> dict:
         "description": project.description,
         "status": project.status,
         "color": project.color,
+        "parent_id": project.parent_id,
         "todo_count": todo_count,
         "done_count": done_count,
         "created_at": project.created_at,
@@ -82,12 +83,17 @@ async def create_project(
             status_code=400,
             detail=f"status 要係 {sorted(VALID_STATUSES)}",
         )
+    if payload.parent_id is not None:
+        parent = db.get(Project, payload.parent_id)
+        if parent is None or parent.user_id != user.id:
+            raise HTTPException(status_code=400, detail="Invalid parent_id")
     project = Project(
         user_id=user.id,
         name=payload.name.strip(),
         description=payload.description,
         status=payload.status,
         color=payload.color,
+        parent_id=payload.parent_id,
     )
     db.add(project)
     db.commit()
@@ -127,6 +133,12 @@ async def update_project(
         project.status = payload.status
     if payload.color is not None:
         project.color = payload.color
+    if "parent_id" in payload.model_fields_set:
+        if payload.parent_id is not None:
+            parent = db.get(Project, payload.parent_id)
+            if parent is None or parent.user_id != user.id:
+                raise HTTPException(status_code=400, detail="Invalid parent_id")
+        project.parent_id = payload.parent_id
 
     db.commit()
     db.refresh(project)
