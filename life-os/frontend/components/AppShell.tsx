@@ -88,6 +88,7 @@ const NAV_ENTRIES: NavEntry[] = [
       { href: "/ledgers", icon: BookOpen, label: "帳簿" },
       { href: "/loans", icon: HandCoins, label: "借貸" },
       { href: "/family-members", icon: Users, label: "家庭成員" },
+      { href: "/forex", icon: TrendingUp, label: "外匯對賬" },
     ],
   },
   { href: "/racing", icon: TrendingUp, label: "賽馬預測" },

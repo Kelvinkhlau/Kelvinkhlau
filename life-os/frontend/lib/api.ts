@@ -2207,6 +2207,178 @@ export const api = {
   revokeVaultShare: async (shareId: number): Promise<void> => {
     await rawFetch(`/vault/shares/${shareId}`, { method: "DELETE" });
   },
+
+  // ─── Forex reconciliation ────────────────────────────────────────────────
+  listForexGroups: () => request<ForexGroup[]>("/forex/groups"),
+  listForexWallets: (groupId: number) =>
+    request<ForexWallet[]>(`/forex/groups/${groupId}/wallets`),
+  listForexBrokers: (groupId: number) =>
+    request<ForexBroker[]>(`/forex/groups/${groupId}/brokers`),
+  listForexTransactions: (params?: {
+    group_id?: number;
+    wallet_id?: number;
+    status?: "pending_tag" | "tagged" | "ignored";
+    direction?: "in" | "out";
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.group_id) qs.set("group_id", String(params.group_id));
+    if (params?.wallet_id) qs.set("wallet_id", String(params.wallet_id));
+    if (params?.status) qs.set("status", params.status);
+    if (params?.direction) qs.set("direction", params.direction);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<ForexTransaction[]>(`/forex/transactions${suffix}`);
+  },
+  tagForexTransaction: (txId: number, brokerId: number, learnAddress = true) =>
+    request<ForexTransaction>(`/forex/transactions/${txId}/tag`, {
+      method: "POST",
+      body: JSON.stringify({ broker_account_id: brokerId, learn_address: learnAddress }),
+    }),
+  forexDashboard: () => request<ForexDashboard>("/forex/dashboard"),
+  reconcileForex: (groupId: number, month: string) =>
+    request<ForexReconciliationResult>(`/forex/groups/${groupId}/reconcile/${month}`, {
+      method: "POST",
+    }),
+  reconcileAllForex: (month: string) =>
+    request<{ id: number; group_code: string; month: string; total_accounts: number; matched_count: number; flagged_count: number }[]>(
+      `/forex/reconcile/${month}`,
+      { method: "POST" },
+    ),
+  getForexReconciliation: (groupId: number, month: string) =>
+    request<ForexReconciliationResult>(`/forex/groups/${groupId}/reconciliation/${month}`),
+  importForexMonthlyReport: async (groupId: number, file: File, month?: string) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+    const token = getToken();
+    const res = await fetch(`${BASE}/forex/groups/${groupId}/import-monthly-report${qs}`, {
+      method: "POST",
+      body: fd,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new ApiError(res.status, await res.text());
+    return (await res.json()) as ForexImportResult;
+  },
+};
+
+// ─── Forex types ──────────────────────────────────────────────────────────
+export type ForexGroup = {
+  id: number;
+  name: string;
+  code: string;
+  owner_name: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ForexWallet = {
+  id: number;
+  group_id: number;
+  address: string;
+  label: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ForexBroker = {
+  id: number;
+  group_id: number;
+  name: string;
+  owner: string | null;
+  email: string | null;
+  account_number: string | null;
+  notes: string | null;
+  is_active: boolean;
+};
+
+export type ForexTransaction = {
+  id: number;
+  group_id: number;
+  wallet_id: number;
+  tx_hash: string;
+  block_timestamp: string;
+  direction: "in" | "out";
+  amount_usdt: number;
+  counterparty_address: string;
+  broker_account_id: number | null;
+  status: "pending_tag" | "tagged" | "ignored";
+  created_at: string;
+};
+
+export type ForexDashboardGroup = {
+  id: number;
+  code: string;
+  name: string;
+  brokers: number;
+  pending_tag: number;
+  tagged: number;
+  latest_reconciliation: {
+    month: string;
+    run_at: string;
+    total: number;
+    matched: number;
+    flagged: number;
+  } | null;
+};
+
+export type ForexDashboard = {
+  groups: ForexDashboardGroup[];
+};
+
+export type ForexReconciliationRow = {
+  broker_id: number;
+  broker_name: string;
+  owner: string | null;
+  opening: number;
+  closing: number;
+  reported_pnl: number;
+  tracked_in: number;
+  tracked_out: number;
+  expected_pnl: number;
+  variance: number;
+  status: "matched" | "flagged";
+};
+
+export type ForexReconciliationSummary = {
+  tolerance_usdt: number;
+  rows: ForexReconciliationRow[];
+  totals: {
+    opening: number;
+    closing: number;
+    reported_pnl: number;
+    expected_pnl: number;
+    variance: number;
+    tracked_in: number;
+    tracked_out: number;
+  };
+};
+
+export type ForexReconciliationResult = {
+  id: number;
+  group_code: string;
+  month: string;
+  run_at?: string;
+  total_accounts: number;
+  matched_count: number;
+  flagged_count: number;
+  summary: ForexReconciliationSummary;
+};
+
+export type ForexImportResult = {
+  month: string;
+  brokers_created: number;
+  monthly_inserted: number;
+  monthly_updated: number;
+  intents_inserted: number;
+  warnings: string[];
 };
 
 // ─── Vault types ────────────────────────────────────────────────────────────
