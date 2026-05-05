@@ -34,6 +34,8 @@ dependencies = [
     "structlog>=24.4.0",
     # Web Push (VAPID)
     "pywebpush>=2.0.0",
+    # Forex module — Excel ingest
+    "openpyxl>=3.1.5",
 ]
 
 [dependency-groups]

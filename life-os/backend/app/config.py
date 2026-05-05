@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # Dev 用：CORS 允許嘅 origin（逗號分隔），production 唔用 CORS（同 origin）
     cors_origins: str = "http://localhost:3000,http://localhost:3100,http://127.0.0.1:3000,http://127.0.0.1:3100"
 
+    # Forex reconciliation
+    tronscan_api_key: str | None = None  # 可選 — 提高 rate limit
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    forex_reconciliation_tolerance_usdt: float = 10.0
+
     # WebAuthn / Passkey
     # rp_id 必須係 frontend domain（冇 scheme / port），例如 "localhost" 或 "lifeos.tail-xxx.ts.net"
     webauthn_rp_id: str = "localhost"

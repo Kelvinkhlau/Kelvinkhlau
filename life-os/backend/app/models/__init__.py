@@ -8,6 +8,16 @@ from app.models.email import Email, EmailClassification
 from app.models.email_attachment import EmailAttachment
 from app.models.expense import Expense
 from app.models.family_member import ExpenseSplit, FamilyMember
+from app.models.forex import (
+    AccountGroup,
+    AccountGroupWallet,
+    AddressBookEntry,
+    BrokerAccount,
+    DepositIntent,
+    MonthlyBalance,
+    ReconciliationRun,
+    WalletTransaction,
+)
 from app.models.idea import Idea
 from app.models.ledger import Ledger
 from app.models.loan import Loan, LoanRepayment
@@ -59,4 +69,13 @@ __all__ = [
     "VaultTag",
     "VaultFile",
     "VaultFileTag",
+    # Forex
+    "AccountGroup",
+    "AccountGroupWallet",
+    "BrokerAccount",
+    "MonthlyBalance",
+    "WalletTransaction",
+    "AddressBookEntry",
+    "DepositIntent",
+    "ReconciliationRun",
 ]

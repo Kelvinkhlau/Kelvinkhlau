@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.api import assistant, audit, auth, bank_accounts, budgets, calendar, emails, expenses, export, family_members, ideas, ledgers, loans, muted, notebooks, notes, projects, push, relations, report, smart_labels, stocks, subscriptions, today, todos, transfers, vault, vip, voice, ws
+from app.api import assistant, audit, auth, bank_accounts, budgets, calendar, emails, expenses, export, family_members, forex, ideas, ledgers, loans, muted, notebooks, notes, projects, push, relations, report, smart_labels, stocks, subscriptions, today, todos, transfers, vault, vip, voice, ws
 from app.config import get_settings
 from app.services.ws_manager import manager as ws_manager
 from app.services.icloud_idle_watcher import start_icloud_idle_watcher, stop_icloud_idle_watcher
@@ -82,6 +82,7 @@ app.include_router(loans.router, prefix="/api/loans", tags=["loans"])
 app.include_router(family_members.router, prefix="/api/family-members", tags=["family-members"])
 app.include_router(vault.router, prefix="/api/vault", tags=["vault"])
 app.include_router(push.router, prefix="/api", tags=["push"])
+app.include_router(forex.router, prefix="/api/forex", tags=["forex"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
 
 

@@ -12,6 +12,7 @@ def start_scheduler() -> None:
         return
 
     from app.services.email_sync import sync_gmail_inbox
+    from app.services.tron_poller import forex_poll_job
 
     scheduler = BackgroundScheduler(timezone="Asia/Hong_Kong")
 
@@ -527,6 +528,18 @@ def start_scheduler() -> None:
         hour=4,
         minute=30,
         id="weekly_system_backup",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+
+    # Forex: pull all active TRON wallets daily at 09:00 HKT
+    scheduler.add_job(
+        forex_poll_job,
+        "cron",
+        hour=9,
+        minute=0,
+        id="forex_poll",
         max_instances=1,
         coalesce=True,
         replace_existing=True,
