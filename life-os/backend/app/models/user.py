@@ -1,4 +1,7 @@
-"""User model — 單用戶系統，但仍然有 user table 為咗將來擴展。"""
+"""User model — 單用戶系統，但仍然有 user table 為咗將來擴展。
+
+Passkey credentials 而家獨立成 PasskeyCredential table — 一個 user 可以有多個 device。
+"""
 
 from datetime import datetime
 
@@ -19,10 +22,16 @@ class User(Base):
     gmail_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
     gmail_history_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # WebAuthn / Passkey credential（base64url 編碼）
-    passkey_credential_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    passkey_public_key: Mapped[str | None] = mapped_column(String, nullable=True)
-    passkey_sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # ─── E2E Encryption master password metadata ────────────────────────
+    # 第一次 set master password 時產生，後續驗證就用呢兩條嘢。
+    # Password 本身永遠唔會 send 去 server（E2E）。
+    encryption_salt: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 已知明文「lifeos-verify-v1」用 derived key encrypt 嘅結果
+    # Client 解密成功 = password 啱
+    encryption_verifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    encryption_verifier_iv: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
