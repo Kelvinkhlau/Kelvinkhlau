@@ -212,36 +212,38 @@ def cmd_tag(args: list[str], db: Session) -> str:
     if group is None:
         return "❌ Internal: tx 嘅 group 唔見咗"
 
-    # Find broker (scoped to tx's group)
-    if owner_arg:
-        broker = db.execute(
-            select(BrokerAccount).where(
-                BrokerAccount.group_id == group.id,
-                func.lower(BrokerAccount.name) == broker_name.lower(),
-                func.lower(BrokerAccount.owner) == owner_arg.lower(),
-            )
-        ).scalar_one_or_none()
-        if broker is None:
-            return f"❌ 搵唔到 broker `{broker_name}` (owner={owner_arg}) 喺 {group.code}"
-    else:
-        rows = db.execute(
-            select(BrokerAccount).where(
-                BrokerAccount.group_id == group.id,
-                func.lower(BrokerAccount.name) == broker_name.lower(),
-            )
-        ).scalars().all()
-        if not rows:
-            return (
-                f"❌ 搵唔到 broker `{broker_name}` 喺 {group.code}\n"
-                f"睇 /brokers {group.code}"
-            )
-        if len(rows) > 1:
-            owners = ", ".join(b.owner or "?" for b in rows)
-            return (
-                f"⚠️ Broker `{broker_name}` 喺 {group.code} 有多個 owner：{owners}\n"
-                f"請加 owner，例：/tag {short_hash} {broker_name} {rows[0].owner or 'Owner'}"
-            )
-        broker = rows[0]
+    # Find broker (scoped to tx's group). Try exact match first, then prefix match.
+    name_lower = broker_name.lower()
+
+    def _query(filter_clause):
+        stmt = select(BrokerAccount).where(
+            BrokerAccount.group_id == group.id, filter_clause
+        )
+        if owner_arg:
+            stmt = stmt.where(func.lower(BrokerAccount.owner) == owner_arg.lower())
+        return db.execute(stmt).scalars().all()
+
+    rows = _query(func.lower(BrokerAccount.name) == name_lower)
+    if not rows:
+        rows = _query(func.lower(BrokerAccount.name).like(f"{name_lower}%"))
+    if not rows:
+        rows = _query(func.lower(BrokerAccount.name).like(f"%{name_lower}%"))
+
+    if not rows:
+        owner_suffix = f" (owner={owner_arg})" if owner_arg else ""
+        return (
+            f"❌ 搵唔到 broker `{broker_name}`{owner_suffix} 喺 {group.code}\n"
+            f"睇 /brokers {group.code}"
+        )
+    if len(rows) > 1:
+        owners = ", ".join(
+            f"{b.name} ({b.owner})" if b.owner else b.name for b in rows[:6]
+        )
+        return (
+            f"⚠️ `{broker_name}` 喺 {group.code} 對應到 {len(rows)} 個 broker：\n  {owners}\n"
+            f"打長啲 broker 名，或者加 owner（例：/tag {short_hash} {broker_name} Kelvin）"
+        )
+    broker = rows[0]
 
     # Apply tag
     tx.broker_account_id = broker.id
