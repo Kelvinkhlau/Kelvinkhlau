@@ -46,6 +46,7 @@ GROUPS: list[dict] = [
         "wallets": [
             ("Kelvin Binance", "TS2EgmAn6HWbeKtTYS3r8Gj2C7T9vYCa1n"),
             ("Carrie (Kelvin太太) Tronlink", "TF67r6LGT5RBWkQoL9m3CPzmfiguoUJSAr"),
+            ("Kelvin Tronlink", "TRNfS4Rv3YnR2TXXqhNVh7xDqy24sSMopA"),
         ],
     },
     {
