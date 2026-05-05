@@ -141,3 +141,94 @@ def test_pinned_first(client: TestClient, auth_headers: dict[str, str]) -> None:
 def test_notes_require_auth(client: TestClient) -> None:
     assert client.get("/api/notes").status_code == 401
     assert client.post("/api/notes", json={"title": "x"}).status_code == 401
+
+
+# ─── Attachments ────────────────────────────────────────────────────────────
+
+
+def test_upload_and_download_attachment(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    note = _create(client, auth_headers, title="With attachment")
+    files = {"file": ("hello.txt", b"hello world", "text/plain")}
+    res = client.post(
+        f"/api/notes/{note['id']}/attachments", headers=auth_headers, files=files
+    )
+    assert res.status_code == 201
+    att = res.json()
+    assert att["filename"] == "hello.txt"
+    assert att["mime_type"] == "text/plain"
+    assert att["size_bytes"] == 11
+
+    # Note list should now return attachments
+    listed = client.get(f"/api/notes/{note['id']}", headers=auth_headers).json()
+    assert len(listed["attachments"]) == 1
+
+    # Download
+    dl = client.get(
+        f"/api/notes/{note['id']}/attachments/{att['id']}", headers=auth_headers
+    )
+    assert dl.status_code == 200
+    assert dl.content == b"hello world"
+
+
+def test_attachment_rejects_empty_file(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    note = _create(client, auth_headers)
+    files = {"file": ("empty.txt", b"", "text/plain")}
+    res = client.post(
+        f"/api/notes/{note['id']}/attachments", headers=auth_headers, files=files
+    )
+    assert res.status_code == 400
+
+
+def test_attachment_rejects_unsupported_mime(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    note = _create(client, auth_headers)
+    files = {"file": ("evil.exe", b"MZbinary", "application/x-msdownload")}
+    res = client.post(
+        f"/api/notes/{note['id']}/attachments", headers=auth_headers, files=files
+    )
+    assert res.status_code == 415
+
+
+def test_delete_attachment(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    note = _create(client, auth_headers)
+    files = {"file": ("a.txt", b"data", "text/plain")}
+    att = client.post(
+        f"/api/notes/{note['id']}/attachments", headers=auth_headers, files=files
+    ).json()
+
+    res = client.delete(
+        f"/api/notes/{note['id']}/attachments/{att['id']}", headers=auth_headers
+    )
+    assert res.status_code == 204
+
+    # Download should 404
+    dl = client.get(
+        f"/api/notes/{note['id']}/attachments/{att['id']}", headers=auth_headers
+    )
+    assert dl.status_code == 404
+
+
+def test_deleting_note_cascades_attachments(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    note = _create(client, auth_headers)
+    files = {"file": ("a.png", b"\x89PNG\r\n\x1a\nfakepng", "image/png")}
+    att = client.post(
+        f"/api/notes/{note['id']}/attachments", headers=auth_headers, files=files
+    ).json()
+
+    # Delete the note
+    assert client.delete(f"/api/notes/{note['id']}", headers=auth_headers).status_code == 204
+
+    # Attachment row should be gone (download 404)
+    dl = client.get(
+        f"/api/notes/{note['id']}/attachments/{att['id']}", headers=auth_headers
+    )
+    assert dl.status_code == 404
