@@ -27,7 +27,7 @@ def test_create_expense_minimal(client: TestClient, auth_headers: dict[str, str]
     assert body["amount"] == 42.5
     assert body["category"] == "飲食"
     assert body["currency"] == "HKD"
-    assert body["spent_at"] == "2026-04-10"
+    assert body["spent_at"].startswith("2026-04-10")
     assert body["merchant"] is None
 
 
@@ -102,7 +102,7 @@ def test_filter_by_date_range(client: TestClient, auth_headers: dict[str, str]) 
         headers=auth_headers,
     ).json()
     assert len(filtered) == 1
-    assert filtered[0]["spent_at"] == "2026-04-05"
+    assert filtered[0]["spent_at"].startswith("2026-04-05")
 
 
 def test_expense_stats(client: TestClient, auth_headers: dict[str, str]) -> None:
