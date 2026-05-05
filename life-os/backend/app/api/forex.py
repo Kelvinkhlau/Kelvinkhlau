@@ -26,7 +26,9 @@ from app.schemas.forex import (
     AccountGroupCreate,
     AccountGroupOut,
     AccountGroupUpdate,
+    BrokerCreate,
     BrokerOut,
+    BrokerUpdate,
     TransactionOut,
     WalletCreate,
     WalletOut,
@@ -148,6 +150,50 @@ async def list_brokers(group_id: int, db: DbSession) -> list[BrokerAccount]:
             .order_by(BrokerAccount.name)
         ).scalars().all()
     )
+
+
+@router.post("/groups/{group_id}/brokers", response_model=BrokerOut, status_code=201)
+async def create_broker(group_id: int, payload: BrokerCreate, db: DbSession) -> BrokerAccount:
+    if db.get(AccountGroup, group_id) is None:
+        raise HTTPException(404, "Group not found")
+    broker = BrokerAccount(group_id=group_id, **payload.model_dump())
+    db.add(broker)
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            409, f"Broker '{payload.name}' (owner={payload.owner}) already exists in this group",
+        ) from e
+    db.refresh(broker)
+    return broker
+
+
+@router.patch("/groups/{group_id}/brokers/{broker_id}", response_model=BrokerOut)
+async def update_broker(
+    group_id: int, broker_id: int, payload: BrokerUpdate, db: DbSession
+) -> BrokerAccount:
+    broker = db.get(BrokerAccount, broker_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(404, "Broker not found")
+    for field in payload.model_fields_set:
+        setattr(broker, field, getattr(payload, field))
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(409, "Update would conflict with existing (name, owner)") from e
+    db.refresh(broker)
+    return broker
+
+
+@router.delete("/groups/{group_id}/brokers/{broker_id}", status_code=204)
+async def delete_broker(group_id: int, broker_id: int, db: DbSession) -> None:
+    broker = db.get(BrokerAccount, broker_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(404, "Broker not found")
+    db.delete(broker)
+    db.commit()
 
 
 # ───────── Transactions ─────────

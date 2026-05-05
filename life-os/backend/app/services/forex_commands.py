@@ -87,12 +87,15 @@ def cmd_start(args: list[str], db: Session) -> str:
         "/brokers <code> — 某組嘅 broker\n"
         "/pending [code] — 未 tag 嘅 tx\n"
         "/status [code] — 即時狀況\n\n"
-        "✏️ 操作：\n"
+        "✏️ Tag / 出金：\n"
         "/tag <hash> <broker> [owner] — tag 條 tx\n"
         "/deposit <code> <broker> <amt> — 預先登記出金\n\n"
+        "➕ 新增：\n"
+        "/addbroker <code> <name> [owner]\n"
+        "/addwallet <code> <label> <addr>\n\n"
         "📊 月結：\n"
         "/reconcile <YYYY-MM> [code] — 跑對賬\n"
-        "/report <YYYY-MM> <code> — 睇 flagged 細節\n\n"
+        "/report <YYYY-MM> <code> — flagged 細節\n\n"
         "/help — 顯示呢段"
     )
 
@@ -239,9 +242,11 @@ def cmd_tag(args: list[str], db: Session) -> str:
 
     if not rows:
         owner_suffix = f" (owner={owner_arg})" if owner_arg else ""
+        suggest_owner = owner_arg or "Kelvin"
         return (
             f"❌ 搵唔到 broker `{broker_name}`{owner_suffix} 喺 {group.code}\n"
-            f"睇 /brokers {group.code}"
+            f"想新增？打：/addbroker {group.code} {broker_name} {suggest_owner}\n"
+            f"睇現有 broker：/brokers {group.code}"
         )
     inferred_note = ""
     if len(rows) > 1 and not owner_arg:
@@ -445,6 +450,110 @@ def cmd_status(args: list[str], db: Session) -> str:
     return "\n".join(parts).rstrip()
 
 
+# ───────── /addbroker ─────────
+
+def cmd_addbroker(args: list[str], db: Session) -> str:
+    """/addbroker <group_code> <name> [owner]  — create a new broker"""
+    if len(args) < 2:
+        return (
+            "用法：/addbroker <group_code> <name> [owner]\n"
+            "例：/addbroker company FundedNext Kelvin\n"
+            "    /addbroker personal NewMT4 Celia"
+        )
+    code = _clean_token(args[0])
+    name = _clean_token(args[1])
+    owner = _clean_token(args[2]) if len(args) >= 3 else None
+    g = _resolve_group(db, code)
+    if g is None:
+        return f"❌ 搵唔到 group code = `{code}`"
+
+    # Check duplicate (group_id, name, owner)
+    existing = db.execute(
+        select(BrokerAccount).where(
+            BrokerAccount.group_id == g.id,
+            func.lower(BrokerAccount.name) == name.lower(),
+            (BrokerAccount.owner.is_(None) if owner is None else func.lower(BrokerAccount.owner) == owner.lower()),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return f"⚠️ Broker `{name}`{f' ({owner})' if owner else ''} 已經喺 {g.code} 入面 (id={existing.id})"
+
+    broker = BrokerAccount(group_id=g.id, name=name, owner=owner, is_active=True)
+    db.add(broker)
+    db.commit()
+    db.refresh(broker)
+    return (
+        f"✅ 已加 broker：{broker.name}"
+        + (f" ({broker.owner})" if broker.owner else "")
+        + f" → {g.name}\n"
+        + f"之後 tag tx：/tag <hash> {broker.name}"
+        + (f" {broker.owner}" if broker.owner else "")
+    )
+
+
+# ───────── /addwallet ─────────
+
+def cmd_addwallet(args: list[str], db: Session) -> str:
+    """/addwallet <group_code> <label> <address>  — add a wallet, auto-backfill 365d, reclassify."""
+    if len(args) < 3:
+        return (
+            "用法：/addwallet <group_code> <label> <address>\n"
+            "例：/addwallet company \"Kelvin Tronlink\" TRNfS4Rv3YnR2TXXqhNVh7xDqy24sSMopA\n\n"
+            "label 可以包空格但要用 quote 包住，或者只用一個 token。"
+        )
+    code = _clean_token(args[0])
+    # Address is always last arg; label is everything in between
+    address = _clean_token(args[-1])
+    label = " ".join(_clean_token(a) for a in args[1:-1])
+    g = _resolve_group(db, code)
+    if g is None:
+        return f"❌ 搵唔到 group code = `{code}`"
+    if len(address) < 26 or not address.startswith("T"):
+        return f"❌ Address `{address}` 唔似 TRON address (要 T 開頭、26+ char)"
+
+    # Idempotent
+    existing = db.execute(
+        select(AccountGroupWallet).where(AccountGroupWallet.address == address)
+    ).scalar_one_or_none()
+    if existing is not None:
+        existing_g = db.get(AccountGroup, existing.group_id)
+        return (
+            f"⚠️ Address 已經喺 DB：[{existing_g.code if existing_g else '?'} / {existing.label}]\n"
+            f"如要轉 group / 改 label，去 web UI /forex/settings"
+        )
+
+    wallet = AccountGroupWallet(group_id=g.id, address=address, label=label, is_active=True)
+    db.add(wallet)
+    db.commit()
+    db.refresh(wallet)
+
+    # Backfill 365d (this can take a few seconds — single Tronscan paginated call)
+    from app.services.tron_poller import poll_wallet
+    backfilled = poll_wallet(wallet, db, lookback_days=365, notify=False)
+
+    # Reclassify: tx whose counterparty matches our wallets (in any direction) become internal
+    own_addrs = {a for (a,) in db.execute(select(AccountGroupWallet.address)).all()}
+    reclassified = 0
+    candidates = db.execute(
+        select(WalletTransaction).where(
+            WalletTransaction.status.in_(["pending_tag", "tagged"])
+        )
+    ).scalars().all()
+    for tx in candidates:
+        if tx.counterparty_address in own_addrs and tx.status != "internal_transfer":
+            tx.status = "internal_transfer"
+            tx.broker_account_id = None
+            reclassified += 1
+    db.commit()
+
+    return (
+        f"✅ 已加 wallet：{wallet.label} → {g.name}\n"
+        f"📥 Backfilled {backfilled} 條 tx (365 日)\n"
+        f"🔄 Reclassified {reclassified} 條舊 tx 變 internal_transfer\n"
+        f"\n下次 09:00 cron 會自動繼續 pull"
+    )
+
+
 # ───────── /reconcile ─────────
 
 def cmd_reconcile(args: list[str], db: Session) -> str:
@@ -543,6 +652,8 @@ COMMANDS: dict[str, Callable[[list[str], Session], str]] = {
     "status": cmd_status,
     "reconcile": cmd_reconcile,
     "report": cmd_report,
+    "addbroker": cmd_addbroker,
+    "addwallet": cmd_addwallet,
 }
 
 

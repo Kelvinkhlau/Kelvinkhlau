@@ -59,16 +59,32 @@ class WalletOut(WalletBase):
 
 # ───────── BrokerAccount ─────────
 
-class BrokerOut(BaseModel):
+class BrokerBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    owner: str | None = Field(None, max_length=100)
+    email: str | None = Field(None, max_length=200)
+    account_number: str | None = Field(None, max_length=100)
+    notes: str | None = None
+    is_active: bool = True
+
+
+class BrokerCreate(BrokerBase):
+    pass
+
+
+class BrokerUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    owner: str | None = None
+    email: str | None = None
+    account_number: str | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class BrokerOut(BrokerBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     group_id: int
-    name: str
-    owner: str | None
-    email: str | None
-    account_number: str | None
-    notes: str | None
-    is_active: bool
 
 
 # ───────── WalletTransaction ─────────

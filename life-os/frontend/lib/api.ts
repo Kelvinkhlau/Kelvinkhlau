@@ -2214,6 +2214,46 @@ export const api = {
     request<ForexWallet[]>(`/forex/groups/${groupId}/wallets`),
   listForexBrokers: (groupId: number) =>
     request<ForexBroker[]>(`/forex/groups/${groupId}/brokers`),
+  createForexBroker: (
+    groupId: number,
+    payload: { name: string; owner?: string | null; email?: string | null; account_number?: string | null; notes?: string | null; is_active?: boolean },
+  ) =>
+    request<ForexBroker>(`/forex/groups/${groupId}/brokers`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateForexBroker: (
+    groupId: number,
+    brokerId: number,
+    payload: Partial<{ name: string; owner: string | null; email: string | null; account_number: string | null; notes: string | null; is_active: boolean }>,
+  ) =>
+    request<ForexBroker>(`/forex/groups/${groupId}/brokers/${brokerId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteForexBroker: async (groupId: number, brokerId: number) => {
+    await rawFetch(`/forex/groups/${groupId}/brokers/${brokerId}`, { method: "DELETE" });
+  },
+  createForexWallet: (
+    groupId: number,
+    payload: { address: string; label: string; is_active?: boolean },
+  ) =>
+    request<ForexWallet>(`/forex/groups/${groupId}/wallets`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateForexWallet: (
+    groupId: number,
+    walletId: number,
+    payload: Partial<{ label: string; is_active: boolean }>,
+  ) =>
+    request<ForexWallet>(`/forex/groups/${groupId}/wallets/${walletId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteForexWallet: async (groupId: number, walletId: number) => {
+    await rawFetch(`/forex/groups/${groupId}/wallets/${walletId}`, { method: "DELETE" });
+  },
   listForexTransactions: (params?: {
     group_id?: number;
     wallet_id?: number;

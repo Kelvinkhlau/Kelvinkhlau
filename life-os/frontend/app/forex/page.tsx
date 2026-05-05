@@ -113,6 +113,13 @@ export default function ForexDashboardPage() {
         </div>
         <div className="flex gap-2">
           <Link
+            href="/forex/settings"
+            className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            title="管理 wallet + broker"
+          >
+            ⚙️ 設定
+          </Link>
+          <Link
             href="/forex/transactions"
             className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
