@@ -33,9 +33,17 @@ def _resolve_group(db: Session, code: str) -> AccountGroup | None:
     ).scalar_one_or_none()
 
 
+_QUOTE_CHARS = "\"'`‘’“”«»"  # ASCII + smart + guillemets
+
+
+def _clean_token(s: str) -> str:
+    """Strip surrounding quotes (incl. iOS smart quotes) and whitespace."""
+    return (s or "").strip().strip(_QUOTE_CHARS).strip()
+
+
 def _find_tx_by_short_hash(db: Session, short_hash: str) -> WalletTransaction | None:
     """Find a wallet_transaction whose tx_hash starts with the given short hash."""
-    short = short_hash.lower().strip()
+    short = _clean_token(short_hash).lower()
     if len(short) < 4:
         return None
     matches = db.execute(
@@ -192,9 +200,9 @@ def cmd_tag(args: list[str], db: Session) -> str:
             "如果同名 broker 多過一個（B 組 ICM 有 Celia 同 CANDY），加 owner：\n"
             "/tag 9f8401 ICM Celia"
         )
-    short_hash = args[0]
-    broker_name = args[1]
-    owner_arg = args[2] if len(args) >= 3 else None
+    short_hash = _clean_token(args[0])
+    broker_name = _clean_token(args[1])
+    owner_arg = _clean_token(args[2]) if len(args) >= 3 else None
 
     tx = _find_tx_by_short_hash(db, short_hash)
     if tx is None:
