@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import asc, desc, select
 
 from app.deps import CurrentUser, DbSession, current_user
@@ -77,6 +78,43 @@ async def create_todo(
     db.refresh(todo)
     log_action(db, action="create", user_id=user.id, resource_type="todo", resource_id=todo.id, detail=todo.title)
     return todo
+
+
+class DecomposeResponse(BaseModel):
+    subtasks: list[str]
+    created_ids: list[int]
+
+
+@router.post("/{todo_id}/decompose", response_model=DecomposeResponse)
+async def decompose_todo(
+    todo_id: int, user: CurrentUser, db: DbSession
+) -> DecomposeResponse:
+    """AI 拆解任務 — 自動建立子任務。"""
+    todo = db.get(Todo, todo_id)
+    if todo is None or todo.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    from app.services.task_decomposer import decompose_task
+
+    subtask_titles = decompose_task(todo.title, todo.description)
+    if not subtask_titles:
+        return DecomposeResponse(subtasks=[], created_ids=[])
+
+    created_ids = []
+    for title in subtask_titles:
+        sub = Todo(
+            user_id=user.id,
+            title=title,
+            priority=todo.priority,
+            due_at=todo.due_at,
+            project_id=todo.project_id,
+        )
+        db.add(sub)
+        db.flush()
+        created_ids.append(sub.id)
+
+    db.commit()
+    return DecomposeResponse(subtasks=subtask_titles, created_ids=created_ids)
 
 
 @router.get("/{todo_id}", response_model=TodoOut)

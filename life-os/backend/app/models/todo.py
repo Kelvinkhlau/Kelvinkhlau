@@ -34,6 +34,9 @@ class Todo(Base):
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_email_id: Mapped[int | None] = mapped_column(
+        ForeignKey("emails.id", ondelete="SET NULL"), nullable=True
+    )
 
     done: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     priority: Mapped[str] = mapped_column(

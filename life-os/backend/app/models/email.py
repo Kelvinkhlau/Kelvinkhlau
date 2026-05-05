@@ -48,11 +48,22 @@ class Email(Base):
     body_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     body_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # 資料夾：inbox / sent
+    folder: Mapped[str] = mapped_column(String(20), nullable=False, default="inbox")
+
     # Metadata
     received_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
     is_read: Mapped[bool] = mapped_column(default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(default=False, nullable=False)
     has_attachment: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+    # 軟刪除 — 移到垃圾桶，7日後永久刪除
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+    # 智能標籤自動歸檔
+    smart_label_id: Mapped[int | None] = mapped_column(
+        ForeignKey("smart_labels.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
@@ -65,6 +76,7 @@ class Email(Base):
     classification: Mapped["EmailClassification | None"] = relationship(
         back_populates="email", uselist=False, cascade="all, delete-orphan"
     )
+    smart_label = relationship("SmartLabel", foreign_keys=[smart_label_id], lazy="select")
 
     __table_args__ = (
         Index("ix_emails_user_received", "user_id", "received_at"),
@@ -86,6 +98,11 @@ class EmailClassification(Base):
     ai_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     ai_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_model: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # 行動偵測
+    action_required: Mapped[bool] = mapped_column(default=False, nullable=False)
+    action_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    action_deadline: Mapped[str | None] = mapped_column(String(20), nullable=True)  # YYYY-MM-DD
 
     # 用戶修正
     user_category: Mapped[str | None] = mapped_column(String(50), nullable=True)

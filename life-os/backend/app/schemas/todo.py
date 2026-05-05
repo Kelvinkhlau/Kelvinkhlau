@@ -32,5 +32,6 @@ class TodoOut(TodoBase):
     id: int
     done: bool
     completed_at: datetime | None
+    source_email_id: int | None = None
     created_at: datetime
     updated_at: datetime
