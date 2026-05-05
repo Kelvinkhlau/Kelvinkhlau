@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.forex import (
+    AccountGroupWallet,
     AddressBookEntry,
     DepositIntent,
     WalletTransaction,
@@ -23,8 +24,30 @@ DEPOSIT_INTENT_WINDOW_HOURS = 24
 DEPOSIT_INTENT_AMOUNT_TOLERANCE = 5.0  # USDT
 
 
+def _is_our_wallet_address(db: Session, address: str) -> bool:
+    """True if the address belongs to one of our own wallets (any group)."""
+    return db.execute(
+        select(AccountGroupWallet.id)
+        .where(AccountGroupWallet.address == address)
+        .limit(1)
+    ).scalar_one_or_none() is not None
+
+
 def try_tag_transaction(tx: WalletTransaction, db: Session) -> bool:
-    """Attempt to auto-tag a single transaction. Returns True if tagged."""
+    """Attempt to auto-classify a single transaction. Returns True if classified.
+
+    Order: internal-transfer check → address_book → deposit_intent (out only).
+    """
+    # 0) Internal transfer: counterparty is one of our own wallets
+    if _is_our_wallet_address(db, tx.counterparty_address):
+        tx.status = "internal_transfer"
+        tx.broker_account_id = None
+        logger.info(
+            "auto_tagger: tx %s classified internal_transfer (cp=%s)",
+            tx.tx_hash[:12], tx.counterparty_address[:10],
+        )
+        return True
+
     # 1) address_book lookup (scoped to tx.group_id)
     entry = db.execute(
         select(AddressBookEntry).where(

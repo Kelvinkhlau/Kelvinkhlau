@@ -30,7 +30,7 @@ function GroupCard({ group }: { group: ForexDashboardGroup }) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-4 gap-2 mb-4">
         <div className="text-center">
           <div className="text-2xl font-semibold">{group.brokers}</div>
           <div className="text-xs text-zinc-500">Brokers</div>
@@ -42,6 +42,10 @@ function GroupCard({ group }: { group: ForexDashboardGroup }) {
         <div className="text-center">
           <div className="text-2xl font-semibold text-amber-600">{pending}</div>
           <div className="text-xs text-zinc-500">Pending</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-semibold text-zinc-500">{group.internal_transfer}</div>
+          <div className="text-xs text-zinc-500">內部</div>
         </div>
       </div>
 

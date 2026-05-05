@@ -157,10 +157,11 @@ async def list_transactions(
     db: DbSession,
     group_id: int | None = Query(None),
     wallet_id: int | None = Query(None),
-    status: str | None = Query(None, description="pending_tag / tagged / ignored"),
+    status: str | None = Query(None, description="pending_tag / tagged / ignored / internal_transfer"),
     direction: str | None = Query(None, pattern=r"^(in|out)$"),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    include_internal: bool = Query(False, description="set true to include internal_transfer rows"),
     limit: int = Query(200, le=1000),
     offset: int = Query(0, ge=0),
 ) -> list[WalletTransaction]:
@@ -171,6 +172,9 @@ async def list_transactions(
         stmt = stmt.where(WalletTransaction.wallet_id == wallet_id)
     if status:
         stmt = stmt.where(WalletTransaction.status == status)
+    elif not include_internal:
+        # Default: hide internal transfers unless explicitly requested or status filter set
+        stmt = stmt.where(WalletTransaction.status != "internal_transfer")
     if direction:
         stmt = stmt.where(WalletTransaction.direction == direction)
     if date_from:
@@ -332,6 +336,12 @@ async def dashboard(db: DbSession) -> dict:
                 WalletTransaction.status == "tagged",
             )
         ).scalar()
+        internal = db.execute(
+            select(_f.count(WalletTransaction.id)).where(
+                WalletTransaction.group_id == g.id,
+                WalletTransaction.status == "internal_transfer",
+            )
+        ).scalar()
         latest_run = db.execute(
             select(ReconciliationRun)
             .where(ReconciliationRun.group_id == g.id)
@@ -345,6 +355,7 @@ async def dashboard(db: DbSession) -> dict:
             "brokers": broker_count,
             "pending_tag": pending,
             "tagged": tagged,
+            "internal_transfer": internal,
             "latest_reconciliation": (
                 {
                     "month": latest_run.month,

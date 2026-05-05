@@ -82,6 +82,10 @@ function TagInline({
     );
   }
 
+  if (tx.status === "internal_transfer") {
+    return <span className="text-zinc-500 text-xs">🔄 內部轉帳</span>;
+  }
+
   if (!open) {
     return (
       <button
@@ -127,7 +131,7 @@ function TagInline({
 
 export default function ForexTransactionsPage() {
   const [groupFilter, setGroupFilter] = useState<number | "">("");
-  const [statusFilter, setStatusFilter] = useState<"" | "pending_tag" | "tagged">("");
+  const [statusFilter, setStatusFilter] = useState<"" | "pending_tag" | "tagged" | "internal_transfer">("");
   const [directionFilter, setDirectionFilter] = useState<"" | "in" | "out">("");
 
   const groups = useQuery({
@@ -162,6 +166,9 @@ export default function ForexTransactionsPage() {
         group_id: groupFilter || undefined,
         status: statusFilter || undefined,
         direction: directionFilter || undefined,
+        // If user selected internal_transfer specifically, the status filter handles it.
+        // Otherwise default API behaviour hides them — surface them only when asked.
+        include_internal: statusFilter === "internal_transfer",
         limit: 500,
       }),
   });
@@ -194,12 +201,15 @@ export default function ForexTransactionsPage() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "" | "pending_tag" | "tagged")}
+          onChange={(e) =>
+            setStatusFilter(e.target.value as "" | "pending_tag" | "tagged" | "internal_transfer")
+          }
           className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
         >
-          <option value="">所有 status</option>
+          <option value="">所有 (隱藏內部)</option>
           <option value="pending_tag">⏳ Pending tag</option>
           <option value="tagged">✅ Tagged</option>
+          <option value="internal_transfer">🔄 內部轉帳</option>
         </select>
 
         <select

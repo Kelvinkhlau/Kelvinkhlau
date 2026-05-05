@@ -417,6 +417,12 @@ def cmd_status(args: list[str], db: Session) -> str:
                 WalletTransaction.status == "tagged",
             )
         ).scalar()
+        internal = db.execute(
+            select(func.count(WalletTransaction.id)).where(
+                WalletTransaction.group_id == g.id,
+                WalletTransaction.status == "internal_transfer",
+            )
+        ).scalar()
         intents = db.execute(
             select(func.count(DepositIntent.id)).where(
                 DepositIntent.group_id == g.id,
@@ -431,7 +437,7 @@ def cmd_status(args: list[str], db: Session) -> str:
         ).scalar()
         parts.append(f"📊 {g.name}  (`{g.code}`)")
         parts.append(f"  Brokers: {broker_count}")
-        parts.append(f"  Tx tagged: {tagged}   pending_tag: {pending}")
+        parts.append(f"  Tx tagged: {tagged}   pending_tag: {pending}   internal: {internal}")
         parts.append(f"  Pending deposits: {intents}")
         if month_row:
             parts.append(f"  Latest monthly: {month_row}")

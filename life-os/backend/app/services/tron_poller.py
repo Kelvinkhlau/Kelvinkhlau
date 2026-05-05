@@ -175,7 +175,7 @@ def poll_wallet(
         forex_auto_tagger.try_tag_transaction(tx, db)
         new_count += 1
 
-        if notify and group is not None:
+        if notify and group is not None and tx.status != "internal_transfer":
             broker = (
                 db.get(BrokerAccount, tx.broker_account_id)
                 if tx.broker_account_id is not None

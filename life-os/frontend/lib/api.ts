@@ -2217,10 +2217,11 @@ export const api = {
   listForexTransactions: (params?: {
     group_id?: number;
     wallet_id?: number;
-    status?: "pending_tag" | "tagged" | "ignored";
+    status?: "pending_tag" | "tagged" | "ignored" | "internal_transfer";
     direction?: "in" | "out";
     date_from?: string;
     date_to?: string;
+    include_internal?: boolean;
     limit?: number;
     offset?: number;
   }) => {
@@ -2231,6 +2232,7 @@ export const api = {
     if (params?.direction) qs.set("direction", params.direction);
     if (params?.date_from) qs.set("date_from", params.date_from);
     if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.include_internal) qs.set("include_internal", "true");
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const suffix = qs.toString() ? `?${qs}` : "";
@@ -2309,7 +2311,7 @@ export type ForexTransaction = {
   amount_usdt: number;
   counterparty_address: string;
   broker_account_id: number | null;
-  status: "pending_tag" | "tagged" | "ignored";
+  status: "pending_tag" | "tagged" | "ignored" | "internal_transfer";
   created_at: string;
 };
 
@@ -2320,6 +2322,7 @@ export type ForexDashboardGroup = {
   brokers: number;
   pending_tag: number;
   tagged: number;
+  internal_transfer: number;
   latest_reconciliation: {
     month: string;
     run_at: string;
