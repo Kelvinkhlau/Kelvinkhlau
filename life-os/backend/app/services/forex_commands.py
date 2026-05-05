@@ -22,6 +22,7 @@ from app.models.forex import (
     MonthlyBalance,
     WalletTransaction,
 )
+from app.services import forex_reconciliation
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +74,18 @@ def _find_broker(db: Session, group: AccountGroup, name_or_alias: str) -> Broker
 def cmd_start(args: list[str], db: Session) -> str:
     return (
         "👋 life-os Forex bot\n\n"
-        "可用指令：\n"
-        "/groups — 列出所有戶口組 + wallet\n"
-        "/brokers <group_code> — 列出某組嘅 broker\n"
-        "/pending [group_code] — 未 tag 嘅 tx\n"
-        "/tag <short_hash> <broker_name> [owner] — tag 條 tx\n"
-        "/deposit <group_code> <broker> <amount> — 預先登記出金\n"
-        "/status [group_code] — 月結對賬狀況\n"
-        "/help — 顯示呢個 message\n"
+        "📋 查睇：\n"
+        "/groups — 戶口組 + wallet\n"
+        "/brokers <code> — 某組嘅 broker\n"
+        "/pending [code] — 未 tag 嘅 tx\n"
+        "/status [code] — 即時狀況\n\n"
+        "✏️ 操作：\n"
+        "/tag <hash> <broker> [owner] — tag 條 tx\n"
+        "/deposit <code> <broker> <amt> — 預先登記出金\n\n"
+        "📊 月結：\n"
+        "/reconcile <YYYY-MM> [code] — 跑對賬\n"
+        "/report <YYYY-MM> <code> — 睇 flagged 細節\n\n"
+        "/help — 顯示呢段"
     )
 
 
@@ -406,6 +411,89 @@ def cmd_status(args: list[str], db: Session) -> str:
     return "\n".join(parts).rstrip()
 
 
+# ───────── /reconcile ─────────
+
+def cmd_reconcile(args: list[str], db: Session) -> str:
+    """/reconcile <YYYY-MM> [group_code]  — run reconciliation, return summary"""
+    if not args:
+        return (
+            "用法：/reconcile <YYYY-MM> [group_code]\n"
+            "例：/reconcile 2026-03            ← 兩組都跑\n"
+            "    /reconcile 2026-03 company   ← 只跑 A 組"
+        )
+    month = args[0]
+    if len(month) != 7 or month[4] != "-":
+        return f"❌ Month 格式應該係 YYYY-MM，唔係 `{month}`"
+
+    if len(args) >= 2:
+        g = _resolve_group(db, args[1])
+        if g is None:
+            return f"❌ 搵唔到 group code = `{args[1]}`"
+        groups = [g]
+    else:
+        groups = list(db.execute(select(AccountGroup).where(AccountGroup.is_active.is_(True)).order_by(AccountGroup.id)).scalars())
+
+    parts: list[str] = []
+    for g in groups:
+        run = forex_reconciliation.run_monthly_reconciliation(db, g, month)
+        totals = run.summary.get("totals", {})
+        parts.append(f"📊 {g.name}  {month}")
+        parts.append(f"  Brokers: {run.total_accounts}   ✅ matched: {run.matched_count}   ⚠️ flagged: {run.flagged_count}")
+        parts.append(
+            f"  Σ reported P&L: {totals.get('reported_pnl', 0):,.2f}   "
+            f"Σ expected: {totals.get('expected_pnl', 0):,.2f}   "
+            f"Σ Δ: {totals.get('variance', 0):+,.2f}"
+        )
+        if run.flagged_count:
+            parts.append(f"  👉 詳情：/report {month} {g.code}")
+        parts.append("")
+    return "\n".join(parts).rstrip()
+
+
+# ───────── /report ─────────
+
+def cmd_report(args: list[str], db: Session) -> str:
+    """/report <YYYY-MM> <group_code>  — show flagged broker details from latest run"""
+    if len(args) < 2:
+        return (
+            "用法：/report <YYYY-MM> <group_code>\n"
+            "例：/report 2026-03 company"
+        )
+    month, code = args[0], args[1]
+    g = _resolve_group(db, code)
+    if g is None:
+        return f"❌ 搵唔到 group code = `{code}`"
+    run = forex_reconciliation.latest_run_for_group(db, g, month)
+    if run is None:
+        return f"❌ {g.code} {month} 仲未跑過 reconciliation。試 /reconcile {month} {code}"
+
+    rows = run.summary.get("rows", [])
+    flagged = [r for r in rows if r.get("status") == "flagged"]
+    parts = [
+        f"📋 {g.name}  {month}  (run {run.run_at.strftime('%Y-%m-%d %H:%M')})",
+        f"Total: {run.total_accounts}   ✅ {run.matched_count}   ⚠️ {run.flagged_count}",
+        "",
+    ]
+    if not flagged:
+        parts.append("✅ 全部 broker 對到數，冇 flagged")
+        return "\n".join(parts)
+
+    parts.append("⚠️ Flagged brokers (|Δ| > tolerance):")
+    parts.append("")
+    for r in flagged[:20]:  # cap at 20 for Telegram message length
+        owner = f" ({r['owner']})" if r.get("owner") else ""
+        parts.append(
+            f"• {r['broker_name']}{owner}\n"
+            f"  Open ${r['opening']:,.2f} → Close ${r['closing']:,.2f}\n"
+            f"  Reported: {r['reported_pnl']:+,.2f}  Expected: {r['expected_pnl']:+,.2f}  "
+            f"Δ: {r['variance']:+,.2f}\n"
+            f"  Tracked in: {r['tracked_in']:,.2f}   out: {r['tracked_out']:,.2f}"
+        )
+    if len(flagged) > 20:
+        parts.append(f"\n…及其他 {len(flagged) - 20} 個 flagged broker（去 web UI 睇晒）")
+    return "\n".join(parts)
+
+
 # ───────── dispatch ─────────
 
 COMMANDS: dict[str, Callable[[list[str], Session], str]] = {
@@ -419,6 +507,8 @@ COMMANDS: dict[str, Callable[[list[str], Session], str]] = {
     "tag": cmd_tag,
     "deposit": cmd_deposit,
     "status": cmd_status,
+    "reconcile": cmd_reconcile,
+    "report": cmd_report,
 }
 
 
