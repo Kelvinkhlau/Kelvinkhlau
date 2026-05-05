@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.services.ai_classifier import _extract_json
@@ -18,12 +20,25 @@ logger = logging.getLogger(__name__)
 _PROMPT_PATH = Path(__file__).parent.parent / "ai" / "prompts" / "assistant.md"
 _cached_prompt: str | None = None
 
+_WEEKDAY_CHT = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
-def _load_prompt() -> str:
+
+def _load_prompt_template() -> str:
     global _cached_prompt
     if _cached_prompt is None:
         _cached_prompt = _PROMPT_PATH.read_text(encoding="utf-8")
     return _cached_prompt
+
+
+def _render_prompt() -> str:
+    """把 `{{now_date}}` / `{{now_weekday}}` / `{{now_time}}` 填入 prompt。"""
+    now = datetime.now(ZoneInfo("Asia/Hong_Kong"))
+    return (
+        _load_prompt_template()
+        .replace("{{now_date}}", now.strftime("%Y-%m-%d"))
+        .replace("{{now_weekday}}", _WEEKDAY_CHT[now.weekday()])
+        .replace("{{now_time}}", now.strftime("%H:%M"))
+    )
 
 
 @dataclass
@@ -40,10 +55,10 @@ def _call_openai(user_message: str) -> str:
     client = OpenAI(api_key=settings.openai_api_key)
     response = client.chat.completions.create(
         model=settings.openai_model_fast,
-        max_tokens=500,
+        max_tokens=800,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": _load_prompt()},
+            {"role": "system", "content": _render_prompt()},
             {"role": "user", "content": user_message},
         ],
     )
@@ -57,8 +72,8 @@ def _call_anthropic(user_message: str) -> str:
     client = Anthropic(api_key=settings.anthropic_api_key)
     response = client.messages.create(
         model=settings.claude_model_fast,
-        max_tokens=500,
-        system=_load_prompt(),
+        max_tokens=800,
+        system=_render_prompt(),
         messages=[{"role": "user", "content": user_message}],
     )
     return "".join(

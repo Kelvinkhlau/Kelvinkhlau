@@ -27,6 +27,9 @@ class ClassificationResult:
     confidence: float
     reason: str
     model: str
+    action_required: bool = False
+    action_summary: str | None = None
+    action_deadline: str | None = None
 
 
 _PROMPT_PATH = Path(__file__).parent.parent / "ai" / "prompts" / "classify_email.md"
@@ -84,11 +87,26 @@ def _parse_result(raw_text: str, model: str) -> ClassificationResult:
 
     reason = str(data.get("reason", ""))[:500]
 
+    # 行動偵測
+    action_required = bool(data.get("action_required", False))
+    action_summary = data.get("action_summary") or None
+    if action_summary:
+        action_summary = str(action_summary)[:500]
+    action_deadline = data.get("action_deadline") or None
+    if action_deadline:
+        action_deadline = str(action_deadline)[:20]
+        # 驗證 YYYY-MM-DD 格式
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", action_deadline):
+            action_deadline = None
+
     return ClassificationResult(
         category=category,
         confidence=confidence,
         reason=reason,
         model=model,
+        action_required=action_required,
+        action_summary=action_summary if action_required else None,
+        action_deadline=action_deadline if action_required else None,
     )
 
 
@@ -244,9 +262,15 @@ def classify_email(
         # Anthropic 行先，失敗 fallback OpenAI
         try:
             return _classify_anthropic(user_content)
-        except Exception as e:
-            logger.warning("Anthropic failed, falling back to OpenAI: %s", e)
-            return _classify_openai(user_content)
+        except Exception as anthropic_err:
+            logger.warning("Anthropic failed, falling back to OpenAI: %s", anthropic_err)
+            try:
+                return _classify_openai(user_content)
+            except Exception as openai_err:
+                from app.utils.ai_auto import combined_fallback_error
+
+                logger.exception("OpenAI fallback also failed")
+                raise combined_fallback_error(anthropic_err, openai_err) from openai_err
 
     raise RuntimeError(
         f"Unknown AI_PROVIDER: {settings.ai_provider!r} (要係 auto / anthropic / openai)"
