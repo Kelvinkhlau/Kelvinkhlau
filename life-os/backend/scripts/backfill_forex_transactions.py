@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 
 from app.db import SessionLocal
 from app.models.forex import AccountGroup, AccountGroupWallet, WalletTransaction
-from app.services.tron_poller import poll_all_active_wallets
+from app.services.tron_poller import poll_wallet
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("backfill_forex")
@@ -25,8 +25,14 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        counts = poll_all_active_wallets(db, lookback_days=days)
-        # Per-wallet summary
+        # Backfill: notify=False so we don't spam Telegram with hundreds of historical alerts
+        counts: dict[str, int] = {}
+        wallets = db.execute(
+            select(AccountGroupWallet).where(AccountGroupWallet.is_active.is_(True))
+        ).scalars().all()
+        for w in wallets:
+            n = poll_wallet(w, db, lookback_days=days, notify=False)
+            counts[f"{w.label} ({w.address[:6]}...{w.address[-4:]})"] = n
         for label, n in counts.items():
             logger.info("  %s : %d new tx", label, n)
 

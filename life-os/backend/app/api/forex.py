@@ -11,10 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 
+from pydantic import BaseModel
+
 from app.deps import DbSession, current_user
 from app.models.forex import (
     AccountGroup,
     AccountGroupWallet,
+    AddressBookEntry,
     BrokerAccount,
     WalletTransaction,
 )
@@ -28,6 +31,11 @@ from app.schemas.forex import (
     WalletOut,
     WalletUpdate,
 )
+
+
+class TagRequest(BaseModel):
+    broker_account_id: int
+    learn_address: bool = True
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -169,3 +177,40 @@ async def list_transactions(
         stmt = stmt.where(WalletTransaction.block_timestamp <= date_to)
     stmt = stmt.limit(limit).offset(offset)
     return list(db.execute(stmt).scalars().all())
+
+
+@router.post("/transactions/{tx_id}/tag", response_model=TransactionOut)
+async def tag_transaction(tx_id: int, payload: TagRequest, db: DbSession) -> WalletTransaction:
+    """Manually tag a transaction to a broker; optionally learn the counterparty address."""
+    tx = db.get(WalletTransaction, tx_id)
+    if tx is None:
+        raise HTTPException(404, "Transaction not found")
+    broker = db.get(BrokerAccount, payload.broker_account_id)
+    if broker is None or broker.group_id != tx.group_id:
+        raise HTTPException(400, "Broker not found or belongs to a different group")
+    tx.broker_account_id = broker.id
+    tx.status = "tagged"
+
+    if payload.learn_address:
+        existing = db.execute(
+            select(AddressBookEntry).where(
+                AddressBookEntry.group_id == tx.group_id,
+                AddressBookEntry.address == tx.counterparty_address,
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            db.add(
+                AddressBookEntry(
+                    group_id=tx.group_id,
+                    address=tx.counterparty_address,
+                    broker_account_id=broker.id,
+                    label=broker.name,
+                    first_seen_at=tx.block_timestamp,
+                    last_seen_at=tx.block_timestamp,
+                )
+            )
+        elif existing.broker_account_id == broker.id:
+            existing.last_seen_at = tx.block_timestamp
+    db.commit()
+    db.refresh(tx)
+    return tx

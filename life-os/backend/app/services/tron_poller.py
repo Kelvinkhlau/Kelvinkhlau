@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models.forex import (
+    AccountGroup,
     AccountGroupWallet,
+    BrokerAccount,
     WalletTransaction,
 )
-from app.services import forex_auto_tagger
+from app.services import forex_auto_tagger, telegram_bot
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +122,17 @@ def _parse_transfer(
     return tx_hash, ts, direction, amount, counterparty
 
 
-def poll_wallet(wallet: AccountGroupWallet, db: Session, *, lookback_days: int = 1) -> int:
+def poll_wallet(
+    wallet: AccountGroupWallet,
+    db: Session,
+    *,
+    lookback_days: int = 1,
+    notify: bool = True,
+) -> int:
     """Pull recent USDT transfers for one wallet → insert new + run auto-tagger.
 
-    Returns the number of newly-inserted transactions.
+    Returns the number of newly-inserted transactions. If ``notify=True``, sends
+    a Telegram alert per new transaction.
     """
     now_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
     start_ms = now_ms - lookback_days * 86_400_000
@@ -133,6 +142,7 @@ def poll_wallet(wallet: AccountGroupWallet, db: Session, *, lookback_days: int =
         logger.error("tron_poller: fetch failed for %s: %s", wallet.address, e)
         return 0
 
+    group = db.get(AccountGroup, wallet.group_id) if notify else None
     new_count = 0
     for raw in records:
         parsed = _parse_transfer(raw, wallet.address)
@@ -164,6 +174,14 @@ def poll_wallet(wallet: AccountGroupWallet, db: Session, *, lookback_days: int =
         db.flush()
         forex_auto_tagger.try_tag_transaction(tx, db)
         new_count += 1
+
+        if notify and group is not None:
+            broker = (
+                db.get(BrokerAccount, tx.broker_account_id)
+                if tx.broker_account_id is not None
+                else None
+            )
+            telegram_bot.notify_new_tx(tx, group, wallet, broker)
 
     if new_count:
         db.commit()

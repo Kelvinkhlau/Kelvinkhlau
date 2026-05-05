@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     tronscan_api_key: str | None = None  # 可選 — 提高 rate limit
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    telegram_webhook_secret: str | None = None  # Telegram → us POST 嘅 shared secret
     forex_reconciliation_tolerance_usdt: float = 10.0
 
     # WebAuthn / Passkey
