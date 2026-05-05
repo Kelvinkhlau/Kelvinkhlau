@@ -15,6 +15,7 @@ from app.api import assistant, audit, auth, bank_accounts, budgets, calendar, em
 from app.config import get_settings
 from app.services.ws_manager import manager as ws_manager
 from app.services.icloud_idle_watcher import start_icloud_idle_watcher, stop_icloud_idle_watcher
+from app.services.telegram_poller import start_telegram_poller, stop_telegram_poller
 from app.workers.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
@@ -25,11 +26,13 @@ async def lifespan(app: FastAPI):
     """App 啟動 / 關閉時嘅 hook。"""
     # 綁定主 event loop，俾 background thread broadcast 事件
     ws_manager.bind_loop(asyncio.get_running_loop())
-    # 啟動時：起背景 scheduler + iCloud IDLE watcher
+    # 啟動時：起背景 scheduler + iCloud IDLE watcher + Telegram long-poller
     start_scheduler()
     start_icloud_idle_watcher()
+    start_telegram_poller()
     yield
-    # 關閉時：停 scheduler + IDLE watcher
+    # 關閉時：停 Telegram poller + IDLE watcher + scheduler
+    stop_telegram_poller()
     stop_icloud_idle_watcher()
     stop_scheduler()
 
