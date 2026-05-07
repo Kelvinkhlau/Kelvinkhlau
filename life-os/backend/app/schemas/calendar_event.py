@@ -9,8 +9,10 @@ class CalendarEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    google_event_id: str
-    google_calendar_id: str
+    source: str
+    external_id: str
+    external_calendar_id: str
+    calendar_name: str
     title: str
     description: str | None
     location: str | None

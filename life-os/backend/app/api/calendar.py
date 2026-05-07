@@ -1,9 +1,9 @@
-"""Calendar API routes — list + sync + CRUD（盡量同步 Google Calendar，失敗就 local-only）。
+"""Calendar API routes — list + sync + CRUD（iCloud CalDAV backend）。
 
-Local-first 原則：用戶 create/update/delete 永遠唔會因為 Google API 失敗而 block。
-- Google 成功 → google_event_id = Google 嗰邊回傳嘅 ID
-- Google 失敗 / 未連接 → google_event_id = "local-{uuid}"（純本機 event）
-- 之後手動 Sync 時可以再嘗試 push 上 Google（將來功能）
+Local-first 原則：用戶 create/update/delete 永遠唔會因為 iCloud API 失敗而 block。
+- iCloud 成功 → external_id = iCal UID，source = "icloud"
+- iCloud 失敗 / 未設定 → external_id = "local-{uuid}"，source = "local"
+- 之後手動 Sync 時可以再嘗試 push 上 iCloud（將來功能）
 """
 
 import logging
@@ -27,13 +27,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(current_user)])
 
 
-def _is_local_only(google_event_id: str | None) -> bool:
-    """判斷一個 event 係咪 local-only（未同步去 Google）。"""
-    return not google_event_id or google_event_id.startswith("local-")
+def _is_local_only(source: str | None, external_id: str | None) -> bool:
+    return source == "local" or (external_id or "").startswith("local-")
 
 
 def _new_local_id() -> str:
     return f"local-{uuid.uuid4().hex}"
+
+
+def _try_get_icloud_client():
+    """嘗試攞 ICloudCalendarClient — 設定缺失就回 None。"""
+    try:
+        from app.services.icloud_calendar_client import ICloudCalendarClient
+        return ICloudCalendarClient()
+    except RuntimeError as e:
+        logger.warning("iCloud client init failed: %s", e)
+        return None
 
 
 @router.get("", response_model=list[CalendarEventOut])
@@ -93,46 +102,58 @@ async def today_events(
 async def trigger_sync(
     user: CurrentUser,
     db: DbSession,
-    days: int = Query(30, ge=1, le=365),
+    days: int = Query(60, ge=1, le=365),
 ) -> dict[str, int]:
-    """手動 trigger calendar sync（用 user 嘅 Google OAuth token）。"""
-    from app.services.calendar_sync import sync_calendar
+    """手動 trigger iCloud calendar sync。"""
+    from app.services.icloud_calendar_sync import sync_icloud_calendar
 
     try:
-        return sync_calendar(db, user, days_ahead=days)
+        return sync_icloud_calendar(db, user, days_ahead=days)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(
-            status_code=502, detail=f"Calendar sync failed: {e}"
+            status_code=502, detail=f"iCloud calendar sync failed: {e}"
         ) from e
 
 
-def _try_get_calendar_client(user):
-    """嘗試攞 CalendarClient — 冇 token 或 init 失敗就回 None（唔 raise）。"""
-    if not user.gmail_refresh_token:
-        return None
+@router.get("/calendars")
+async def list_icloud_calendars(user: CurrentUser):
+    """列出 iCloud sub-calendars (個人 / 家庭 / 訂閱等)。"""
+    client = _try_get_icloud_client()
+    if client is None:
+        raise HTTPException(status_code=400, detail="iCloud 未設定")
     try:
-        from app.services.calendar_client import CalendarClient
-        return CalendarClient(user.gmail_refresh_token)
+        cals = client.list_calendars()
     except Exception as e:
-        logger.warning("CalendarClient init failed: %s", e)
-        return None
+        raise HTTPException(status_code=502, detail=f"iCloud 連接失敗: {e}") from e
+    return [{"name": c.name, "url": c.url} for c in cals]
 
 
 @router.post("", response_model=CalendarEventOut, status_code=201)
 async def create_event(
     payload: CalendarEventCreate, user: CurrentUser, db: DbSession
 ) -> CalendarEvent:
-    """建立新 event — 嘗試同步去 Google，失敗就 save local-only。"""
-    google_event_id: str | None = None
-    google_calendar_id = "primary"
+    """建立新 event — 嘗試同步去 iCloud，失敗就 save local-only。"""
+    external_id: str | None = None
+    external_calendar_id = ""
+    calendar_name = ""
+    source = "local"
     parsed_status = "confirmed"
 
-    client = _try_get_calendar_client(user)
+    client = _try_get_icloud_client()
     if client is not None:
         try:
+            cals = client.list_calendars()
+            # 揀 default calendar — 通常係「個人」或第一個（命名啦 Apple）
+            target = next(
+                (c for c in cals if "個人" in c.name or "Personal" in c.name.lower()),
+                cals[0] if cals else None,
+            )
+            if target is None:
+                raise RuntimeError("冇 iCloud calendar")
             parsed = client.create_event(
+                calendar_url=target.url,
                 title=payload.title,
                 start_at=payload.start_at,
                 end_at=payload.end_at,
@@ -140,21 +161,25 @@ async def create_event(
                 description=payload.description,
                 location=payload.location,
             )
-            google_event_id = parsed.google_event_id
-            google_calendar_id = parsed.google_calendar_id
+            external_id = parsed.icloud_uid
+            external_calendar_id = parsed.calendar_url
+            calendar_name = parsed.calendar_name
+            source = "icloud"
             parsed_status = parsed.status
         except Exception as e:
             logger.warning(
-                "Google Calendar create failed (saving locally only): %s", e
+                "iCloud calendar create failed (saving locally only): %s", e
             )
 
-    if not google_event_id:
-        google_event_id = _new_local_id()
+    if not external_id:
+        external_id = _new_local_id()
 
     event = CalendarEvent(
         user_id=user.id,
-        google_event_id=google_event_id,
-        google_calendar_id=google_calendar_id,
+        source=source,
+        external_id=external_id,
+        external_calendar_id=external_calendar_id,
+        calendar_name=calendar_name,
         title=payload.title,
         description=payload.description,
         location=payload.location,
@@ -179,37 +204,13 @@ async def create_event(
 async def update_event(
     event_id: int, payload: CalendarEventUpdate, user: CurrentUser, db: DbSession
 ) -> CalendarEvent:
-    """更新 event — 盡量同步去 Google，失敗就只更新 local。"""
+    """更新 event — local-only 直接更新；iCloud 嘅暫只更新 local（push 去 iCloud 留 future feature）。"""
     event = db.get(CalendarEvent, event_id)
     if event is None or event.user_id != user.id:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # 只有非 local-only event 先嘗試去 Google
-    if not _is_local_only(event.google_event_id):
-        client = _try_get_calendar_client(user)
-        if client is not None:
-            try:
-                client.update_event(
-                    event.google_event_id,
-                    title=payload.title,
-                    start_at=payload.start_at,
-                    end_at=payload.end_at,
-                    all_day=payload.all_day,
-                    description=payload.description
-                    if payload.description is not None
-                    else ...,
-                    location=payload.location
-                    if payload.location is not None
-                    else ...,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Google Calendar update failed for %s (updating locally only): %s",
-                    event.google_event_id,
-                    e,
-                )
+    # TODO: implement iCloud push update via caldav (next iteration)
 
-    # 永遠都更新本地
     if payload.title is not None:
         event.title = payload.title
     if payload.description is not None:
@@ -240,24 +241,21 @@ async def update_event(
 
 
 @router.delete("/{event_id}", status_code=204)
-async def delete_event(
-    event_id: int, user: CurrentUser, db: DbSession
-) -> None:
-    """刪除 event — 盡量同步刪除 Google，失敗就只刪除 local。"""
+async def delete_event(event_id: int, user: CurrentUser, db: DbSession) -> None:
+    """刪除 event — iCloud event 同時 push delete，local 純 DB 刪除。"""
     event = db.get(CalendarEvent, event_id)
     if event is None or event.user_id != user.id:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not _is_local_only(event.google_event_id):
-        client = _try_get_calendar_client(user)
+    if event.source == "icloud" and not _is_local_only(event.source, event.external_id):
+        client = _try_get_icloud_client()
         if client is not None:
             try:
-                client.delete_event(event.google_event_id)
+                client.delete_event(event.external_calendar_id, event.external_id)
             except Exception as e:
                 logger.warning(
-                    "Google Calendar delete failed for %s (removing locally): %s",
-                    event.google_event_id,
-                    e,
+                    "iCloud delete failed for %s (removing locally): %s",
+                    event.external_id, e,
                 )
 
     db.delete(event)

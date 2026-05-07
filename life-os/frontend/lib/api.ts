@@ -206,8 +206,10 @@ export type IdeaUpdate = Partial<IdeaCreate> & {
 
 export type CalendarEvent = {
   id: number;
-  google_event_id: string;
-  google_calendar_id: string;
+  source: string;
+  external_id: string;
+  external_calendar_id: string;
+  calendar_name: string;
   title: string;
   description: string | null;
   location: string | null;

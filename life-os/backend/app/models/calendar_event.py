@@ -1,4 +1,4 @@
-"""CalendarEvent model — Google Calendar 本地副本。"""
+"""CalendarEvent model — 本地 calendar event 副本（iCloud / local）。"""
 
 from datetime import datetime
 
@@ -9,7 +9,13 @@ from app.db import Base
 
 
 class CalendarEvent(Base):
-    """一個 calendar event（source of truth 喺 Google Calendar）。"""
+    """一個 calendar event。
+
+    Source 標識來源（'icloud' / 'local'）。`external_id` + `source` 一齊唯一識別
+    一個 sync 過嚟嘅 event：
+    - source='icloud' → external_id = iCal UID, external_calendar_id = CalDAV URL
+    - source='local'  → external_id = "local-{uuid}"
+    """
 
     __tablename__ = "calendar_events"
 
@@ -18,13 +24,19 @@ class CalendarEvent(Base):
         ForeignKey("users.id"), index=True, nullable=False
     )
 
-    # Google Calendar IDs — 防止重複 sync
-    google_event_id: Mapped[str] = mapped_column(
-        String(200), unique=True, index=True, nullable=False
-    )
-    google_calendar_id: Mapped[str] = mapped_column(
-        String(200), nullable=False, default="primary"
-    )
+    # Source identification
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="icloud", index=True
+    )  # icloud / local
+    external_id: Mapped[str] = mapped_column(
+        String(500), unique=True, index=True, nullable=False
+    )  # iCal UID for iCloud, "local-{uuid}" for local-only
+    external_calendar_id: Mapped[str] = mapped_column(
+        String(500), nullable=False, default=""
+    )  # CalDAV URL for iCloud, "" for local
+    calendar_name: Mapped[str] = mapped_column(
+        String(200), nullable=False, default=""
+    )  # display name (個人 / 家庭 / etc.)
 
     # Event 內容
     title: Mapped[str] = mapped_column(String(500), nullable=False, default="")

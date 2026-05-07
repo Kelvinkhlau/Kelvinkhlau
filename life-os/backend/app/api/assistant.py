@@ -141,15 +141,23 @@ async def chat(
         location = result.data.get("location")
         category = result.data.get("category", "personal")
 
-        # 試同步去 Google Calendar；失敗就淨係存 local
-        google_event_id = ""
-        google_calendar_id = "primary"
+        # 試同步去 iCloud Calendar；失敗就淨係存 local
+        external_id = ""
+        external_calendar_id = ""
+        calendar_name = ""
+        source = "local"
         try:
-            if user.gmail_refresh_token:
-                from app.services.calendar_client import CalendarClient
+            from app.services.icloud_calendar_client import ICloudCalendarClient
 
-                client = CalendarClient(user.gmail_refresh_token)
+            client = ICloudCalendarClient()
+            cals = client.list_calendars()
+            target = next(
+                (c for c in cals if "個人" in c.name or "personal" in c.name.lower()),
+                cals[0] if cals else None,
+            )
+            if target is not None:
                 parsed = client.create_event(
+                    calendar_url=target.url,
                     title=title,
                     start_at=start_at,
                     end_at=end_at,
@@ -157,17 +165,21 @@ async def chat(
                     description=description,
                     location=location,
                 )
-                google_event_id = parsed.google_event_id
-                google_calendar_id = parsed.google_calendar_id
+                external_id = parsed.icloud_uid
+                external_calendar_id = parsed.calendar_url
+                calendar_name = parsed.calendar_name
+                source = "icloud"
         except Exception as e:
-            logger.warning("Google Calendar sync failed for assistant event: %s", e)
-            # Local-only fallback — 用 pseudo ID
-            google_event_id = f"local-{int(datetime.now().timestamp() * 1000)}"
+            logger.warning("iCloud Calendar sync failed for assistant event: %s", e)
+        if not external_id:
+            external_id = f"local-{int(datetime.now().timestamp() * 1000)}"
 
         event = CalendarEvent(
             user_id=user.id,
-            google_event_id=google_event_id,
-            google_calendar_id=google_calendar_id,
+            source=source,
+            external_id=external_id,
+            external_calendar_id=external_calendar_id,
+            calendar_name=calendar_name,
             title=title,
             description=description,
             location=location,

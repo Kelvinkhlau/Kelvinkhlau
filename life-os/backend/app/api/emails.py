@@ -1252,8 +1252,10 @@ async def create_action_from_email(
 
         event = CalendarEvent(
             user_id=user.id,
-            google_event_id=f"local-email-{email_id}",
-            google_calendar_id="local",
+            source="local",
+            external_id=f"local-email-{email_id}",
+            external_calendar_id="",
+            calendar_name="",
             title=title,
             description=f"來自 email：{email.subject}\n寄件者：{email.sender}",
             start_at=event_date.replace(hour=9, minute=0, second=0),

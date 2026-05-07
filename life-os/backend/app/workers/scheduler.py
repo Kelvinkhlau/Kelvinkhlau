@@ -16,11 +16,11 @@ def start_scheduler() -> None:
 
     scheduler = BackgroundScheduler(timezone="Asia/Hong_Kong")
 
-    # Gmail sync — 每 2 分鐘（用 History API 做 incremental sync，效率好高）
+    # Gmail sync — 每 1 分鐘（用 History API 做 incremental sync，效率好高）
     scheduler.add_job(
         sync_gmail_inbox,
         "interval",
-        minutes=2,
+        minutes=1,
         id="email_sync",
         max_instances=1,
         coalesce=True,
@@ -56,7 +56,7 @@ def start_scheduler() -> None:
     scheduler.add_job(
         sync_gmail_sent,
         "interval",
-        minutes=10,
+        minutes=1,
         id="email_sent_sync",
         max_instances=1,
         coalesce=True,
@@ -137,7 +137,7 @@ def start_scheduler() -> None:
     scheduler.add_job(
         sync_icloud_inbox,
         "interval",
-        minutes=5,
+        minutes=1,
         id="icloud_sync",
         max_instances=1,
         coalesce=True,
@@ -223,7 +223,7 @@ def start_scheduler() -> None:
     scheduler.add_job(
         sync_icloud_sent,
         "interval",
-        minutes=10,
+        minutes=1,
         id="icloud_sent_sync",
         max_instances=1,
         coalesce=True,
@@ -540,6 +540,47 @@ def start_scheduler() -> None:
         hour=9,
         minute=0,
         id="forex_poll",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+
+    # iCloud Calendar sync — 每 5 分鐘
+    def sync_icloud_calendar_job():
+        import logging
+        from sqlalchemy import select
+
+        from app.config import get_settings
+        from app.db import SessionLocal
+        from app.models.user import User
+
+        logger = logging.getLogger(__name__)
+        settings = get_settings()
+        if not settings.icloud_email or not settings.icloud_app_password:
+            return
+
+        db = SessionLocal()
+        try:
+            user = db.execute(select(User)).scalars().first()
+            if not user:
+                return
+            from app.services.icloud_calendar_sync import sync_icloud_calendar
+
+            result = sync_icloud_calendar(db, user, days_ahead=60)
+            logger.info(
+                "iCloud calendar scheduled sync: fetched=%d new=%d updated=%d",
+                result["fetched"], result["new"], result["updated"],
+            )
+        except Exception:
+            logger.exception("iCloud calendar scheduled sync 失敗")
+        finally:
+            db.close()
+
+    scheduler.add_job(
+        sync_icloud_calendar_job,
+        "interval",
+        minutes=1,
+        id="icloud_calendar_sync",
         max_instances=1,
         coalesce=True,
         replace_existing=True,
