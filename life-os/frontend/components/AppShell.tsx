@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 import { PrivacyToggle } from "./PrivacyToggle";
 import { NotificationCenter } from "./NotificationCenter";
+import { SystemSwitcher } from "./SystemSwitcher";
 import { getToken, setToken } from "@/lib/api";
 import { formatKey } from "@/lib/hotkeys";
 import { usePaletteContext } from "./command/paletteContext";
@@ -104,15 +105,6 @@ const NAV_ENTRIES: NavEntry[] = [
 /** 不需要 sidebar 的頁面（login 等） */
 const NO_SHELL_PATHS = ["/login"];
 
-/** 底部 tab bar 嘅主要入口（thumb-reachable） */
-const BOTTOM_TABS: { href: string; icon: LucideIcon; label: string }[] = [
-  { href: "/", icon: Home, label: "主頁" },
-  { href: "/inbox", icon: Inbox, label: "郵件" },
-  { href: "/todos", icon: CheckSquare, label: "待辦" },
-  { href: "/calendar", icon: Calendar, label: "行事曆" },
-  { href: "/expenses", icon: Wallet, label: "財務" },
-];
-
 const SIDEBAR_EXPAND_KEY = "lifeos:sidebarExpanded";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -129,8 +121,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMounted(true);
     setHasToken(getToken() !== null);
     try {
-      setDesktopExpanded(localStorage.getItem(SIDEBAR_EXPAND_KEY) === "1");
-    } catch {}
+      // 預設展開（Donezo style）— 用戶曾經手動收起過先存 "0"
+      const v = localStorage.getItem(SIDEBAR_EXPAND_KEY);
+      setDesktopExpanded(v === null ? true : v === "1");
+    } catch {
+      setDesktopExpanded(true);
+    }
   }, []);
 
   // persist
@@ -256,7 +252,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="font-semibold text-base tracking-tight flex items-center gap-2"
               onClick={() => setSidebarOpen(false)}
             >
-              <span className="w-8 h-8 rounded-md bg-foreground text-background flex items-center justify-center font-bold text-xs tracking-tighter">
+              <span className="w-8 h-8 rounded-md bg-accent text-accent-foreground flex items-center justify-center font-bold text-xs tracking-tighter">
                 lo
               </span>
               life-os
@@ -273,7 +269,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/"
                 aria-label="life-os"
-                className="hidden lg:flex w-10 h-10 rounded-md bg-foreground text-background items-center justify-center font-bold text-sm tracking-tighter shadow-raised-sm"
+                className="hidden lg:flex w-10 h-10 rounded-md bg-accent text-accent-foreground items-center justify-center font-bold text-sm tracking-tighter shadow-raised-sm"
               >
                 lo
               </Link>
@@ -357,7 +353,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     onClick={() => setSidebarOpen(false)}
                     className={`${railOnlyLg} w-10 h-10 rounded-md items-center justify-center mb-1 transition-all ${
                       groupActive
-                        ? "bg-foreground text-background shadow-raised-sm"
+                        ? "bg-accent text-accent-foreground shadow-raised-sm"
                         : "text-foreground-muted hover:bg-muted hover:text-foreground"
                     }`}
                     aria-label={entry.label}
@@ -399,7 +395,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             aria-current={active ? "page" : undefined}
                             className={`flex items-center gap-2.5 px-3 py-1.5 rounded-sm text-sm transition-colors ${
                               active
-                                ? "bg-foreground text-background font-medium"
+                                ? "bg-accent text-accent-foreground font-medium"
                                 : "text-foreground-muted hover:bg-muted hover:text-foreground"
                             }`}
                           >
@@ -426,7 +422,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 title={entry.label}
                 className={`flex items-center rounded-md transition-all gap-2.5 px-3 py-2 mb-0.5 text-sm ${railNavLinkClasses} ${
                   active
-                    ? `bg-foreground text-background shadow-raised-sm font-medium ${
+                    ? `bg-accent text-accent-foreground shadow-raised-sm font-medium ${
                         expanded ? "" : "lg:font-normal"
                       }`
                     : "text-foreground-muted hover:bg-muted hover:text-foreground"
@@ -442,6 +438,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Bottom actions */}
         <div className={bottomClasses}>
           <div className={bottomInnerClasses}>
+            <SystemSwitcher />
             <NotificationCenter />
             <PrivacyToggle />
             <ThemeToggle />
@@ -477,50 +474,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Menu {...iconProps} size={22} />
             </button>
             <span className="font-semibold text-base tracking-tight flex-1">life-os</span>
+            <SystemSwitcher />
             <NotificationCenter />
           </div>
         </header>
 
         {/* Page content */}
-        <main id="main-content" className="flex-1 overflow-y-auto">
+        <main id="main-content" className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
           {children}
         </main>
-
-        {/* Mobile bottom-tab nav — thumb-reachable primary navigation */}
-        <nav
-          className="lg:hidden shrink-0 border-t border-border-subtle bg-surface/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
-          aria-label="主選單"
-        >
-          <div className="flex items-stretch">
-            {BOTTOM_TABS.map((tab) => {
-              const active = isActive(tab.href);
-              const Icon = tab.icon;
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  aria-label={tab.label}
-                  aria-current={active ? "page" : undefined}
-                  className={`relative flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] text-[10px] font-medium transition-colors ${
-                    active
-                      ? "text-accent"
-                      : "text-foreground-muted hover:text-foreground hover:bg-surface-elevated/50"
-                  }`}
-                >
-                  {active && (
-                    <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 bg-accent rounded-full" aria-hidden />
-                  )}
-                  <Icon
-                    {...iconProps}
-                    size={20}
-                    className={`transition-transform ${active ? "scale-110" : ""}`}
-                  />
-                  <span className="truncate">{tab.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
       </div>
     </div>
   );

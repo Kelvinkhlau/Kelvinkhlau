@@ -94,6 +94,9 @@ def _b64url_decode(text: str) -> bytes:
 def _expected_origins() -> list[str]:
     """WebAuthn `origin` 驗證值 — 支援多個 origin（開發 + 生產）。"""
     origins = {settings.frontend_url.rstrip("/")}
+    # 生產 origin 由 rp_id 推導（例如 https://talent-state.com）
+    if settings.webauthn_rp_id not in ("localhost", "127.0.0.1"):
+        origins.add(f"https://{settings.webauthn_rp_id}")
     # 永遠都支援 localhost 開發
     origins.add("http://localhost:3100")
     origins.add("http://localhost:3000")
