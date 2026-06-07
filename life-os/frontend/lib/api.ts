@@ -2565,6 +2565,26 @@ export const api = {
       `/forex/groups/${groupId}/monthly/${month}/brokers/${brokerId}`,
       { method: "PUT", body: JSON.stringify(payload) },
     ),
+  getForexBrokerCredentials: (groupId: number, brokerId: number) =>
+    request<ForexBrokerCredentials>(
+      `/forex/groups/${groupId}/brokers/${brokerId}/credentials`,
+    ),
+  updateForexBrokerCredentials: (
+    groupId: number,
+    brokerId: number,
+    payload: Partial<{
+      login_url: string | null;
+      email: string | null;
+      account_number: string | null;
+      password: string | null;
+      twofa: string | null;
+      is_active: boolean;
+    }>,
+  ) =>
+    request<ForexBrokerCredentials>(
+      `/forex/groups/${groupId}/brokers/${brokerId}/credentials`,
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
   syncForexWallets: (lookbackDays = 7) =>
     request<{ total_new: number; per_wallet: Record<string, number> }>(
       `/forex/sync-wallets?lookback_days=${lookbackDays}`,
@@ -2676,6 +2696,18 @@ export type ForexMonthlyView = {
     pnl: number;
   };
   untagged_wallet: number;
+};
+
+export type ForexBrokerCredentials = {
+  id: number;
+  name: string;
+  owner: string | null;
+  login_url: string | null;
+  email: string | null;
+  account_number: string | null;
+  password: string | null;
+  twofa: string | null;
+  is_active: boolean;
 };
 
 export type ForexBalanceImport = {

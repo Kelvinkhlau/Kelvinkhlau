@@ -91,6 +91,31 @@ class BrokerOut(BrokerBase):
     group_id: int
 
 
+# ───────── Broker credentials (step-up gated) ─────────
+
+class BrokerCredentials(BaseModel):
+    """敏感登入資料 — 只經 Face ID / passkey 重驗後讀寫。"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    owner: str | None = None
+    login_url: str | None = None
+    email: str | None = None
+    account_number: str | None = None
+    password: str | None = None
+    twofa: str | None = None
+    is_active: bool = True
+
+
+class BrokerCredentialsUpdate(BaseModel):
+    login_url: str | None = None
+    email: str | None = None
+    account_number: str | None = None
+    password: str | None = None
+    twofa: str | None = None
+    is_active: bool | None = None
+
+
 # ───────── WalletTransaction ─────────
 
 class TransactionOut(BaseModel):

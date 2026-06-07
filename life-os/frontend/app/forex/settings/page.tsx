@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { Loading } from "@/components/Loading";
 import { toast } from "@/components/Toast";
+import { useStepUpAuth } from "@/components/useStepUpAuth";
 
 function shortAddr(a: string): string {
   return a.length > 16 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a;
@@ -142,6 +143,7 @@ function BrokerList({ group }: { group: ForexGroup }) {
   const [owner, setOwner] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<Partial<ForexBroker>>({});
+  const [credBroker, setCredBroker] = useState<ForexBroker | null>(null);
 
   const create = useMutation({
     mutationFn: () =>
@@ -250,6 +252,13 @@ function BrokerList({ group }: { group: ForexGroup }) {
                         改
                       </button>
                       <button
+                        onClick={() => setCredBroker(b)}
+                        className="text-xs text-blue-600 hover:underline mr-2"
+                        title="登入資料（要 Face ID）"
+                      >
+                        🔐 登入
+                      </button>
+                      <button
                         onClick={() =>
                           update.mutate({ id: b.id, payload: { is_active: !b.is_active } })
                         }
@@ -312,7 +321,135 @@ function BrokerList({ group }: { group: ForexGroup }) {
           </button>
         </div>
       )}
+
+      {credBroker && (
+        <CredentialsModal
+          groupId={group.id}
+          broker={credBroker}
+          onClose={() => setCredBroker(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/* ─────────── Broker credentials (step-up gated) ─────────── */
+
+function CredentialsModal({
+  groupId,
+  broker,
+  onClose,
+}: {
+  groupId: number;
+  broker: ForexBroker;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { runWithStepUp } = useStepUpAuth();
+  const [loaded, setLoaded] = useState(false);
+  const [reveal, setReveal] = useState(false);
+  const [v, setV] = useState({
+    login_url: "",
+    email: "",
+    account_number: "",
+    password: "",
+    twofa: "",
+    is_active: true,
+  });
+
+  const load = useMutation({
+    mutationFn: () => runWithStepUp(() => api.getForexBrokerCredentials(groupId, broker.id)),
+    onSuccess: (c) => {
+      setV({
+        login_url: c.login_url ?? "",
+        email: c.email ?? "",
+        account_number: c.account_number ?? "",
+        password: c.password ?? "",
+        twofa: c.twofa ?? "",
+        is_active: c.is_active,
+      });
+      setLoaded(true);
+    },
+    onError: (e) => {
+      toast.error(`讀取失敗：${String(e)}`);
+      onClose();
+    },
+  });
+
+  // 開 modal 即刻 step-up + load
+  useEffect(() => {
+    load.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = useMutation({
+    mutationFn: () =>
+      runWithStepUp(() =>
+        api.updateForexBrokerCredentials(groupId, broker.id, {
+          login_url: v.login_url.trim() || null,
+          email: v.email.trim() || null,
+          account_number: v.account_number.trim() || null,
+          password: v.password.trim() || null,
+          twofa: v.twofa.trim() || null,
+          is_active: v.is_active,
+        }),
+      ),
+    onSuccess: () => {
+      toast.success("已儲存登入資料");
+      qc.invalidateQueries({ queryKey: ["forex-brokers", groupId] });
+      onClose();
+    },
+    onError: (e) => toast.error(`儲存失敗：${String(e)}`),
+  });
+
+  const field = "px-2 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded w-full";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 rounded-xl p-5 w-[420px] space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-semibold text-lg">
+          🔐 {broker.name}{broker.owner ? ` (${broker.owner})` : ""} 登入資料
+        </h2>
+        {!loaded ? (
+          <div className="text-sm text-zinc-500 py-6 text-center">
+            {load.isPending ? "請用 Face ID / Touch ID 驗證…" : "等緊驗證…"}
+          </div>
+        ) : (
+          <>
+            <L label="登入網址"><input className={field} value={v.login_url} onChange={(e) => setV({ ...v, login_url: e.target.value })} placeholder="https://…" /></L>
+            <L label="登入電郵 / 戶口號"><input className={field} value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></L>
+            <L label="賬戶編號"><input className={field} value={v.account_number} onChange={(e) => setV({ ...v, account_number: e.target.value })} /></L>
+            <L label="密碼">
+              <div className="flex gap-2">
+                <input className={field} type={reveal ? "text" : "password"} value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} />
+                <button onClick={() => setReveal((r) => !r)} className="px-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded">{reveal ? "🙈" : "👁"}</button>
+              </div>
+            </L>
+            <L label="確認方式 (2FA)"><input className={field} value={v.twofa} onChange={(e) => setV({ ...v, twofa: e.target.value })} placeholder="e.g. 12位記字詞 / Google Auth" /></L>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={v.is_active} onChange={(e) => setV({ ...v, is_active: e.target.checked })} />
+              狀態：{v.is_active ? "活躍" : "已取消"}
+            </label>
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={onClose} className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700">取消</button>
+              <button onClick={() => save.mutate()} disabled={save.isPending}
+                className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                {save.isPending ? "儲存緊…" : "儲存"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function L({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <div className="text-xs text-zinc-500 mb-1">{label}</div>
+      {children}
+    </label>
   );
 }
 

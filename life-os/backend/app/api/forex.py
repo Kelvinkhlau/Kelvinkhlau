@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from pydantic import BaseModel
 
+from app.api.vault import require_recent_auth
 from app.deps import DbSession, current_user
 from app.models.forex import (
     AccountGroup,
@@ -30,6 +31,8 @@ from app.schemas.forex import (
     AccountGroupOut,
     AccountGroupUpdate,
     BrokerCreate,
+    BrokerCredentials,
+    BrokerCredentialsUpdate,
     BrokerOut,
     BrokerUpdate,
     MonthlyBalanceUpsert,
@@ -204,6 +207,40 @@ async def update_broker(
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(409, "Update would conflict with existing (name, owner)") from e
+    db.refresh(broker)
+    return broker
+
+
+# ── Broker login credentials (Face ID / passkey step-up gated) ──
+
+@router.get(
+    "/groups/{group_id}/brokers/{broker_id}/credentials",
+    response_model=BrokerCredentials,
+    dependencies=[Depends(require_recent_auth)],
+)
+async def get_broker_credentials(
+    group_id: int, broker_id: int, db: DbSession
+) -> BrokerAccount:
+    broker = db.get(BrokerAccount, broker_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(404, "Broker not found in this group")
+    return broker
+
+
+@router.put(
+    "/groups/{group_id}/brokers/{broker_id}/credentials",
+    response_model=BrokerCredentials,
+    dependencies=[Depends(require_recent_auth)],
+)
+async def update_broker_credentials(
+    group_id: int, broker_id: int, payload: BrokerCredentialsUpdate, db: DbSession
+) -> BrokerAccount:
+    broker = db.get(BrokerAccount, broker_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(404, "Broker not found in this group")
+    for field in payload.model_fields_set:
+        setattr(broker, field, getattr(payload, field))
+    db.commit()
     db.refresh(broker)
     return broker
 
