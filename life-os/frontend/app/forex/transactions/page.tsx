@@ -77,6 +77,7 @@ function TagInline({
       );
       qc.invalidateQueries({ queryKey: ["forex-transactions"] });
       qc.invalidateQueries({ queryKey: ["forex-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["forex-monthly"] });
       setOpen(false);
     },
     onError: (e) => toast.error(`Tag 失敗：${String(e)}`),
@@ -232,10 +233,39 @@ function TagInline({
   );
 }
 
+function readParam(key: string): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(key) ?? "";
+}
+
+function nextMonthFirst(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m, 1); // m (1-based) → next month index
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export default function ForexTransactionsPage() {
-  const [groupFilter, setGroupFilter] = useState<number | "">("");
-  const [statusFilter, setStatusFilter] = useState<"" | "pending_tag" | "tagged" | "internal_transfer">("");
+  const [groupFilter, setGroupFilter] = useState<number | "">(() => {
+    const v = readParam("group_id");
+    return v ? Number(v) : "";
+  });
+  const [statusFilter, setStatusFilter] = useState<"" | "pending_tag" | "tagged" | "internal_transfer">(
+    () => (readParam("status") as "" | "pending_tag" | "tagged" | "internal_transfer") || "",
+  );
   const [directionFilter, setDirectionFilter] = useState<"" | "in" | "out">("");
+  const [monthFilter, setMonthFilter] = useState<string>(() => readParam("month"));
+  const qc = useQueryClient();
+
+  const sync = useMutation({
+    mutationFn: () => api.syncForexWallets(7),
+    onSuccess: (r) => {
+      toast.success(`同步完成：${r.total_new} 筆新交易`);
+      qc.invalidateQueries({ queryKey: ["forex-transactions"] });
+      qc.invalidateQueries({ queryKey: ["forex-monthly"] });
+      qc.invalidateQueries({ queryKey: ["forex-dashboard"] });
+    },
+    onError: (e) => toast.error(`同步失敗：${String(e)}`),
+  });
 
   const groups = useQuery({
     queryKey: ["forex-groups"],
@@ -263,12 +293,14 @@ export default function ForexTransactionsPage() {
   });
 
   const txs = useQuery({
-    queryKey: ["forex-transactions", groupFilter, statusFilter, directionFilter],
+    queryKey: ["forex-transactions", groupFilter, statusFilter, directionFilter, monthFilter],
     queryFn: () =>
       api.listForexTransactions({
         group_id: groupFilter || undefined,
         status: statusFilter || undefined,
         direction: directionFilter || undefined,
+        date_from: monthFilter ? `${monthFilter}-01` : undefined,
+        date_to: monthFilter ? nextMonthFirst(monthFilter) : undefined,
         // If user selected internal_transfer specifically, the status filter handles it.
         // Otherwise default API behaviour hides them — surface them only when asked.
         include_internal: statusFilter === "internal_transfer",
@@ -324,6 +356,30 @@ export default function ForexTransactionsPage() {
           <option value="in">🟢 In</option>
           <option value="out">🔴 Out</option>
         </select>
+
+        <input
+          type="month"
+          value={monthFilter}
+          onChange={(e) => setMonthFilter(e.target.value)}
+          className="px-3 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
+        />
+        {monthFilter && (
+          <button
+            onClick={() => setMonthFilter("")}
+            className="px-2 py-1.5 text-sm text-zinc-500 hover:underline"
+          >
+            清月份
+          </button>
+        )}
+
+        <button
+          onClick={() => sync.mutate()}
+          disabled={sync.isPending}
+          className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          title="即刻抓最新鏈上交易"
+        >
+          {sync.isPending ? "同步緊…" : "🔄 同步錢包"}
+        </button>
 
         <span className="text-sm text-zinc-500 ml-auto self-center">
           {txs.data?.length ?? 0} 條

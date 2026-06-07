@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 
 from pydantic import BaseModel
@@ -46,10 +46,12 @@ from app.schemas.forex import (
     WalletUpdate,
 )
 from app.services import (
+    forex_balance_ocr,
     forex_excel_importer,
     forex_flows,
     forex_reconciliation,
     forex_settlement,
+    tron_poller,
 )
 
 
@@ -384,7 +386,20 @@ async def get_monthly(group_id: int, month: str, db: DbSession) -> MonthlyView:
             tot["withdrawal"] += withdrawal
             tot["pnl"] += pnl
 
-    return MonthlyView(group_id=group_id, month=month, rows=rows, totals=tot)
+    # 本月未 tag 鏈上交易（提示去 tag 先計入出入金）
+    dt_start, dt_end, _, _ = forex_flows._month_bounds(month)
+    untagged = db.execute(
+        select(func.count(WalletTransaction.id)).where(
+            WalletTransaction.group_id == group_id,
+            WalletTransaction.status == "pending_tag",
+            WalletTransaction.block_timestamp >= dt_start,
+            WalletTransaction.block_timestamp < dt_end,
+        )
+    ).scalar() or 0
+
+    return MonthlyView(
+        group_id=group_id, month=month, rows=rows, totals=tot, untagged_wallet=int(untagged)
+    )
 
 
 @router.put(
@@ -590,6 +605,71 @@ async def import_monthly_report(
         "intents_inserted": result.intents_inserted,
         "warnings": result.warnings,
     }
+
+
+# ───────── Manual wallet sync ─────────
+
+@router.post("/sync-wallets")
+async def sync_wallets(
+    db: DbSession,
+    lookback_days: int = Query(7, ge=1, le=90, description="抓近 N 日嘅鏈上交易"),
+) -> dict:
+    """手動即刻抓所有 active 錢包嘅最新 TRON 交易（唔使等每日 09:00 自動）。"""
+    counts = tron_poller.poll_all_active_wallets(db, lookback_days=lookback_days)
+    return {"total_new": sum(counts.values()), "per_wallet": counts}
+
+
+# ───────── Image import (Phase D) ─────────
+
+@router.post("/groups/{group_id}/import-balances-image")
+async def import_balances_image(
+    group_id: int, db: DbSession, file: UploadFile = File(...)
+) -> dict:
+    """上傳月結表截圖 → AI 抽最新結餘 → 對返 broker。回傳俾前端 review，唔直接寫入。"""
+    group = db.get(AccountGroup, group_id)
+    if group is None:
+        raise HTTPException(404, "Group not found")
+    media_type = file.content_type or "image/png"
+    if not media_type.startswith("image/"):
+        raise HTTPException(400, "請上傳圖片")
+    data = await file.read()
+    try:
+        parsed = forex_balance_ocr.extract_balances(data, media_type)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(422, str(e)) from e
+
+    brokers = list(
+        db.execute(
+            select(BrokerAccount).where(BrokerAccount.group_id == group_id)
+        ).scalars().all()
+    )
+    by_name: dict[str, list[BrokerAccount]] = {}
+    for b in brokers:
+        by_name.setdefault(b.name.strip().lower(), []).append(b)
+
+    rows: list[dict] = []
+    matched = 0
+    for p in parsed:
+        cands = by_name.get(p["broker"].strip().lower(), [])
+        chosen = None
+        if len(cands) == 1:
+            chosen = cands[0]
+        elif len(cands) > 1 and p.get("owner"):
+            owner_l = p["owner"].strip().lower()
+            chosen = next((c for c in cands if (c.owner or "").lower() == owner_l), cands[0])
+        elif cands:
+            chosen = cands[0]
+        rows.append({
+            "broker_id": chosen.id if chosen else None,
+            "broker_name": chosen.name if chosen else p["broker"],
+            "owner": chosen.owner if chosen else p.get("owner"),
+            "closing": p["closing"],
+            "matched": chosen is not None,
+        })
+        if chosen is not None:
+            matched += 1
+
+    return {"rows": rows, "matched": matched, "unmatched": len(rows) - matched}
 
 
 # ───────── Reconciliation ─────────

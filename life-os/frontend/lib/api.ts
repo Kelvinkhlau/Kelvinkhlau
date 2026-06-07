@@ -2565,6 +2565,23 @@ export const api = {
       `/forex/groups/${groupId}/monthly/${month}/brokers/${brokerId}`,
       { method: "PUT", body: JSON.stringify(payload) },
     ),
+  syncForexWallets: (lookbackDays = 7) =>
+    request<{ total_new: number; per_wallet: Record<string, number> }>(
+      `/forex/sync-wallets?lookback_days=${lookbackDays}`,
+      { method: "POST" },
+    ),
+  importForexBalancesImage: async (groupId: number, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const token = getToken();
+    const res = await fetch(`${BASE}/forex/groups/${groupId}/import-balances-image`, {
+      method: "POST",
+      body: fd,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new ApiError(res.status, await res.text());
+    return (await res.json()) as ForexBalanceImport;
+  },
   listForexTransfers: (groupId: number, brokerId: number, month: string) =>
     request<ForexTransfer[]>(
       `/forex/groups/${groupId}/brokers/${brokerId}/transfers?month=${month}`,
@@ -2658,6 +2675,19 @@ export type ForexMonthlyView = {
     withdrawal: number;
     pnl: number;
   };
+  untagged_wallet: number;
+};
+
+export type ForexBalanceImport = {
+  rows: {
+    broker_id: number | null;
+    broker_name: string;
+    owner: string | null;
+    closing: number;
+    matched: boolean;
+  }[];
+  matched: number;
+  unmatched: number;
 };
 
 export type ForexTransfer = {

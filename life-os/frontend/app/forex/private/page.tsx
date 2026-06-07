@@ -161,6 +161,38 @@ export default function ForexPrivateMonthlyPage() {
     onError: (e) => toast.error(`儲存失敗：${String(e)}`),
   });
 
+  const syncWallets = useMutation({
+    mutationFn: () => api.syncForexWallets(7),
+    onSuccess: (r) => {
+      toast.success(`同步完成：${r.total_new} 筆新交易`);
+      qc.invalidateQueries({ queryKey: ["forex-monthly"] });
+      qc.invalidateQueries({ queryKey: ["forex-transactions"] });
+      qc.invalidateQueries({ queryKey: ["forex-dashboard"] });
+    },
+    onError: (e) => toast.error(`同步失敗：${String(e)}`),
+  });
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const importImg = useMutation({
+    mutationFn: (file: File) => api.importForexBalancesImage(Number(resolvedGroupId), file),
+    onSuccess: (r) => {
+      setDrafts((prev) => {
+        const next = { ...prev };
+        for (const row of r.rows) {
+          if (row.matched && row.broker_id != null && next[row.broker_id]) {
+            next[row.broker_id] = { ...next[row.broker_id], closing: String(row.closing) };
+          }
+        }
+        return next;
+      });
+      toast.success(
+        `對到 ${r.matched} 行（已填入最新結餘，覆核後撳全部儲存）` +
+          (r.unmatched ? `；對唔到 ${r.unmatched} 行` : ""),
+      );
+    },
+    onError: (e) => toast.error(`圖片 import 失敗：${String(e)}`),
+  });
+
   const addBroker = useMutation({
     mutationFn: () =>
       api.createForexBroker(Number(resolvedGroupId), {
@@ -219,6 +251,21 @@ export default function ForexPrivateMonthlyPage() {
           className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50">
           💵 新增交易
         </button>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f && resolvedGroupId) importImg.mutate(f);
+            if (fileRef.current) fileRef.current.value = "";
+          }} />
+        <button onClick={() => fileRef.current?.click()} disabled={!resolvedGroupId || importImg.isPending}
+          className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50">
+          {importImg.isPending ? "讀緊圖…" : "📷 Import 圖片"}
+        </button>
+        <button onClick={() => syncWallets.mutate()} disabled={syncWallets.isPending}
+          className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          title="即刻抓最新鏈上交易">
+          {syncWallets.isPending ? "同步緊…" : "🔄 同步錢包"}
+        </button>
       </div>
 
       {showAdd && (
@@ -237,6 +284,18 @@ export default function ForexPrivateMonthlyPage() {
       <p className="text-xs text-zinc-500 mb-4">
         出金/入金 = 系統自動加總（{month >= "2026-06" ? "錢包自動 + 人手交易" : "5月手動結轉"}）；撳右邊 ▸ 睇明細。P/L = 最新結餘 − 上月結餘 − 入金 + 出金（清晒戶口最新結餘填 0）。
       </p>
+
+      {view.data && month >= "2026-06" && view.data.untagged_wallet > 0 && (
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-sm">
+          <span>⚠️ 本月有 <b>{view.data.untagged_wallet}</b> 筆鏈上交易未 tag，tag 咗先會計入出入金。</span>
+          <Link
+            href={`/forex/transactions?group_id=${resolvedGroupId}&status=pending_tag&month=${month}`}
+            className="ml-auto text-blue-600 hover:underline whitespace-nowrap"
+          >
+            去 tag →
+          </Link>
+        </div>
+      )}
 
       {view.isLoading && <Loading />}
       {view.isError && <div className="text-center text-red-600 py-12">載入失敗：{String(view.error)}</div>}

@@ -152,6 +152,7 @@ class MonthlyView(BaseModel):
     month: str
     rows: list[MonthlyRow]
     totals: MonthlyTotals
+    untagged_wallet: int = 0  # 本月未 tag 鏈上交易數（提示去 tag）
 
 
 # ───────── Transfers (出入金明細) ─────────
