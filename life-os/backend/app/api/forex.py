@@ -19,6 +19,9 @@ from app.models.forex import (
     AccountGroupWallet,
     AddressBookEntry,
     BrokerAccount,
+    ManualTransfer,
+    MonthlyBalance,
+    QuarterlySettlement,
     ReconciliationRun,
     WalletTransaction,
 )
@@ -29,17 +32,33 @@ from app.schemas.forex import (
     BrokerCreate,
     BrokerOut,
     BrokerUpdate,
+    MonthlyBalanceUpsert,
+    MonthlyView,
+    SettlementOut,
+    SettlementPreview,
+    SettlementSave,
     TransactionOut,
+    TransactionUpdate,
+    TransferCreate,
+    TransferOut,
     WalletCreate,
     WalletOut,
     WalletUpdate,
 )
-from app.services import forex_excel_importer, forex_reconciliation
+from app.services import (
+    forex_excel_importer,
+    forex_flows,
+    forex_reconciliation,
+    forex_settlement,
+)
 
 
 class TagRequest(BaseModel):
     broker_account_id: int
     learn_address: bool = True
+    # tag 嗰陣可以順手填手續費 / 備註（知就填，唔知留空，之後再補）
+    fee_usdt: float | None = None
+    notes: str | None = None
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -242,6 +261,11 @@ async def tag_transaction(tx_id: int, payload: TagRequest, db: DbSession) -> Wal
         raise HTTPException(400, "Broker not found or belongs to a different group")
     tx.broker_account_id = broker.id
     tx.status = "tagged"
+    # 只喺有提供時先改（model_fields_set 區分「冇填」同「明確清空」）
+    if "fee_usdt" in payload.model_fields_set:
+        tx.fee_usdt = payload.fee_usdt
+    if "notes" in payload.model_fields_set:
+        tx.notes = payload.notes
 
     if payload.learn_address:
         existing = db.execute(
@@ -266,6 +290,273 @@ async def tag_transaction(tx_id: int, payload: TagRequest, db: DbSession) -> Wal
     db.commit()
     db.refresh(tx)
     return tx
+
+
+@router.patch("/transactions/{tx_id}", response_model=TransactionOut)
+async def update_transaction(
+    tx_id: int, payload: TransactionUpdate, db: DbSession
+) -> WalletTransaction:
+    """事後人手補 / 改手續費 + 備註（唔影響 tag / broker）。"""
+    tx = db.get(WalletTransaction, tx_id)
+    if tx is None:
+        raise HTTPException(404, "Transaction not found")
+    if "fee_usdt" in payload.model_fields_set:
+        tx.fee_usdt = payload.fee_usdt
+    if "notes" in payload.model_fields_set:
+        tx.notes = payload.notes
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
+# ───────── Monthly balances (private group manual entry) ─────────
+
+def _prev_month(month: str) -> str:
+    """'2026-05' → '2026-04'."""
+    year, mon = (int(p) for p in month.split("-"))
+    return f"{year - 1}-12" if mon == 1 else f"{year}-{mon - 1:02d}"
+
+
+def _pnl(opening: float, closing: float, deposit: float, withdrawal: float) -> float:
+    return closing - opening - deposit + withdrawal
+
+
+@router.get("/groups/{group_id}/monthly/{month}", response_model=MonthlyView)
+async def get_monthly(group_id: int, month: str, db: DbSession) -> MonthlyView:
+    """每個 active broker 一行：有 row 用 row，冇就 opening 帶上月 closing。計埋 P/L + totals。"""
+    group = db.get(AccountGroup, group_id)
+    if group is None:
+        raise HTTPException(404, "Group not found")
+
+    brokers = list(
+        db.execute(
+            select(BrokerAccount)
+            .where(BrokerAccount.group_id == group_id, BrokerAccount.is_active.is_(True))
+            .order_by(BrokerAccount.owner, BrokerAccount.name)
+        ).scalars().all()
+    )
+    prev = _prev_month(month)
+    rows: list[dict] = []
+    tot = {"opening": 0.0, "closing": 0.0, "deposit": 0.0, "withdrawal": 0.0, "pnl": 0.0}
+
+    for b in brokers:
+        # 出入金永遠由交易自動加總（人手 + 6月起鏈上 tagged）
+        withdrawal, deposit = forex_flows.month_flows(db, b.id, month)
+        cur = db.execute(
+            select(MonthlyBalance).where(
+                MonthlyBalance.broker_account_id == b.id, MonthlyBalance.month == month
+            )
+        ).scalar_one_or_none()
+        if cur is not None:
+            opening = float(cur.opening_balance)
+            closing = float(cur.closing_balance)
+            pnl = _pnl(opening, closing, deposit, withdrawal)
+            has_data = True
+            notes = cur.notes
+        else:
+            prev_row = db.execute(
+                select(MonthlyBalance).where(
+                    MonthlyBalance.broker_account_id == b.id, MonthlyBalance.month == prev
+                )
+            ).scalar_one_or_none()
+            opening = float(prev_row.closing_balance) if prev_row else 0.0
+            closing = pnl = 0.0
+            has_data = False
+            notes = None
+
+        rows.append({
+            "broker_id": b.id,
+            "broker_name": b.name,
+            "owner": b.owner,
+            "account_number": b.account_number,
+            "opening": opening,
+            "closing": closing,
+            "deposit": deposit,
+            "withdrawal": withdrawal,
+            "pnl": pnl,
+            "has_data": has_data,
+            "notes": notes,
+        })
+        if has_data:
+            tot["opening"] += opening
+            tot["closing"] += closing
+            tot["deposit"] += deposit
+            tot["withdrawal"] += withdrawal
+            tot["pnl"] += pnl
+
+    return MonthlyView(group_id=group_id, month=month, rows=rows, totals=tot)
+
+
+@router.put(
+    "/groups/{group_id}/monthly/{month}/brokers/{broker_id}",
+    response_model=MonthlyView,
+)
+async def upsert_monthly(
+    group_id: int, month: str, broker_id: int, payload: MonthlyBalanceUpsert, db: DbSession
+) -> MonthlyView:
+    """新增 / 更新一個 broker 嘅月結（只入結餘）。出入金由交易自動加總，P/L 即時計。"""
+    broker = db.get(BrokerAccount, broker_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(404, "Broker not found in this group")
+
+    withdrawal, deposit = forex_flows.month_flows(db, broker_id, month)
+    pnl = _pnl(payload.opening_balance, payload.closing_balance, deposit, withdrawal)
+    row = db.execute(
+        select(MonthlyBalance).where(
+            MonthlyBalance.broker_account_id == broker_id, MonthlyBalance.month == month
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = MonthlyBalance(broker_account_id=broker_id, month=month)
+        db.add(row)
+    row.opening_balance = payload.opening_balance
+    row.closing_balance = payload.closing_balance
+    row.reported_pnl = pnl
+    if "notes" in payload.model_fields_set:
+        row.notes = payload.notes
+    db.commit()
+    return await get_monthly(group_id, month, db)
+
+
+# ───────── Transfers (出入金明細) ─────────
+
+@router.get(
+    "/groups/{group_id}/brokers/{broker_id}/transfers", response_model=list[TransferOut]
+)
+async def list_broker_transfers(
+    group_id: int, broker_id: int, month: str, db: DbSession
+) -> list[dict]:
+    """一個 broker-month 嘅出入金明細（人手 + 鏈上 tagged）。"""
+    broker = db.get(BrokerAccount, broker_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(404, "Broker not found in this group")
+    return forex_flows.list_transfers(db, broker_id, month)
+
+
+@router.post("/groups/{group_id}/transfers", status_code=201)
+async def create_transfer(
+    group_id: int, payload: TransferCreate, db: DbSession
+) -> dict:
+    """人手加一筆出入金（銀行匯款 / 其他）。"""
+    broker = db.get(BrokerAccount, payload.broker_account_id)
+    if broker is None or broker.group_id != group_id:
+        raise HTTPException(400, "Broker not found or belongs to a different group")
+    t = ManualTransfer(
+        group_id=group_id,
+        broker_account_id=payload.broker_account_id,
+        flow=payload.flow,
+        method=payload.method,
+        amount_usdt=payload.amount_usdt,
+        transfer_date=payload.transfer_date,
+        notes=payload.notes,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return {"id": t.id}
+
+
+@router.delete("/groups/{group_id}/transfers/{transfer_id}", status_code=204)
+async def delete_transfer(group_id: int, transfer_id: int, db: DbSession) -> None:
+    """刪一筆人手出入金（鏈上交易喺交易記錄頁管理，唔喺度刪）。"""
+    t = db.get(ManualTransfer, transfer_id)
+    if t is None or t.group_id != group_id:
+        raise HTTPException(404, "Manual transfer not found")
+    db.delete(t)
+    db.commit()
+
+
+# ───────── Quarterly settlement (50/50 profit split) ─────────
+
+@router.get("/groups/{group_id}/settlements", response_model=list[SettlementOut])
+async def list_settlements(group_id: int, db: DbSession) -> list[QuarterlySettlement]:
+    if db.get(AccountGroup, group_id) is None:
+        raise HTTPException(404, "Group not found")
+    return list(
+        db.execute(
+            select(QuarterlySettlement)
+            .where(QuarterlySettlement.group_id == group_id)
+            .order_by(desc(QuarterlySettlement.quarter))
+        ).scalars().all()
+    )
+
+
+@router.get(
+    "/groups/{group_id}/settlement/{quarter}/preview", response_model=SettlementPreview
+)
+async def preview_settlement(
+    group_id: int,
+    quarter: str,
+    db: DbSession,
+    total_fees: float | None = Query(None, description="override; omit = auto from wallet fees"),
+    paid_amount: float = Query(0, ge=0),
+) -> dict:
+    """Compute (not persist) the settlement numbers. Pre-fills from any saved row."""
+    group = db.get(AccountGroup, group_id)
+    if group is None:
+        raise HTTPException(404, "Group not found")
+    try:
+        # If a saved settlement exists and caller didn't override, reuse its inputs
+        if total_fees is None or paid_amount == 0:
+            saved = db.execute(
+                select(QuarterlySettlement).where(
+                    QuarterlySettlement.group_id == group_id,
+                    QuarterlySettlement.quarter == quarter,
+                )
+            ).scalar_one_or_none()
+            if saved is not None:
+                if total_fees is None:
+                    total_fees = float(saved.total_fees)
+                if paid_amount == 0:
+                    paid_amount = float(saved.paid_amount)
+        return forex_settlement.compute_preview(
+            db, group, quarter, total_fees=total_fees, paid_amount=paid_amount
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/groups/{group_id}/settlement/{quarter}", response_model=SettlementOut)
+async def save_settlement(
+    group_id: int, quarter: str, payload: SettlementSave, db: DbSession
+) -> QuarterlySettlement:
+    """Snapshot + persist a quarter's settlement (incl. the transfer made to the partner)."""
+    group = db.get(AccountGroup, group_id)
+    if group is None:
+        raise HTTPException(404, "Group not found")
+    try:
+        p = forex_settlement.compute_preview(
+            db, group, quarter,
+            total_fees=payload.total_fees, paid_amount=payload.paid_amount,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    row = db.execute(
+        select(QuarterlySettlement).where(
+            QuarterlySettlement.group_id == group_id,
+            QuarterlySettlement.quarter == quarter,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = QuarterlySettlement(group_id=group_id, quarter=quarter)
+        db.add(row)
+    row.gross_pnl = p["gross_pnl"]
+    row.total_fees = p["total_fees"]
+    row.net_pnl = p["net_pnl"]
+    row.carry_in = p["carry_in"]
+    row.distributable = p["distributable"]
+    row.partner_split_pct = p["partner_split_pct"]
+    row.partner_share = p["partner_share"]
+    row.paid_amount = payload.paid_amount
+    row.carry_out = p["carry_out"]
+    row.paid_tx_hash = payload.paid_tx_hash
+    row.paid_at = payload.paid_at
+    row.notes = payload.notes
+    row.status = payload.status
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 # ───────── Excel Import ─────────

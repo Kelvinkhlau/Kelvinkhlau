@@ -110,7 +110,7 @@ function WalletList({ group }: { group: ForexGroup }) {
           <button
             disabled={!label.trim() || !address.trim() || create.isPending}
             onClick={() => create.mutate()}
-            className="text-xs px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+            className="text-xs px-2 py-1 bg-emerald-600 text-white rounded disabled:opacity-50"
           >
             {create.isPending ? "…" : "✓ 加"}
           </button>
@@ -230,7 +230,7 @@ function BrokerList({ group }: { group: ForexGroup }) {
                     <>
                       <button
                         onClick={() => update.mutate({ id: b.id, payload: editValues })}
-                        className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded mr-1"
+                        className="text-xs px-2 py-0.5 bg-emerald-600 text-white rounded mr-1"
                       >
                         ✓
                       </button>
@@ -300,7 +300,7 @@ function BrokerList({ group }: { group: ForexGroup }) {
           <button
             disabled={!name.trim() || create.isPending}
             onClick={() => create.mutate()}
-            className="text-xs px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+            className="text-xs px-2 py-1 bg-emerald-600 text-white rounded disabled:opacity-50"
           >
             {create.isPending ? "…" : "✓ 加"}
           </button>

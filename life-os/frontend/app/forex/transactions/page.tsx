@@ -59,8 +59,17 @@ function TagInline({
       });
   }, [brokers, wallets, tx.group_id, tx.wallet_id]);
 
+  // fee / notes — tag 嗰陣可以填，唔填得，之後再補
+  const [fee, setFee] = useState("");
+  const [notes, setNotes] = useState("");
+  const [editing, setEditing] = useState(false);
+
   const tag = useMutation({
-    mutationFn: (brokerId: number) => api.tagForexTransaction(tx.id, brokerId),
+    mutationFn: (brokerId: number) =>
+      api.tagForexTransaction(tx.id, brokerId, {
+        fee_usdt: fee.trim() ? Number(fee) : null,
+        notes: notes.trim() || null,
+      }),
     onSuccess: (data) => {
       const broker = brokers.find((b) => b.id === data.broker_account_id);
       toast.success(
@@ -73,17 +82,94 @@ function TagInline({
     onError: (e) => toast.error(`Tag 失敗：${String(e)}`),
   });
 
-  if (tx.status === "tagged") {
-    const broker = brokers.find((b) => b.id === tx.broker_account_id);
-    return (
-      <span className="text-green-700 dark:text-green-400 text-xs">
-        ✓ {broker?.name ?? "?"}{broker?.owner ? ` (${broker.owner})` : ""}
-      </span>
-    );
-  }
+  // 事後補 / 改 fee + notes
+  const updateMeta = useMutation({
+    mutationFn: () =>
+      api.updateForexTransaction(tx.id, {
+        fee_usdt: fee.trim() ? Number(fee) : null,
+        notes: notes.trim() || null,
+      }),
+    onSuccess: () => {
+      toast.success("已更新手續費 / 備註");
+      qc.invalidateQueries({ queryKey: ["forex-transactions"] });
+      setEditing(false);
+    },
+    onError: (e) => toast.error(`更新失敗：${String(e)}`),
+  });
 
   if (tx.status === "internal_transfer") {
     return <span className="text-zinc-500 text-xs">🔄 內部轉帳</span>;
+  }
+
+  // ── 已 tag：顯示 broker + fee/notes + ✎ 編輯 ──
+  if (tx.status === "tagged") {
+    const broker = brokers.find((b) => b.id === tx.broker_account_id);
+    if (editing) {
+      return (
+        <div className="flex flex-col gap-1 max-w-[220px]">
+          <input
+            type="number"
+            step="0.01"
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            placeholder="手續費 USDT（可留空）"
+            className="text-xs px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
+          />
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="備註"
+            className="text-xs px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
+          />
+          <div className="flex gap-1">
+            <button
+              onClick={() => updateMeta.mutate()}
+              disabled={updateMeta.isPending}
+              className="text-xs px-2 py-0.5 bg-emerald-600 text-white rounded disabled:opacity-50"
+            >
+              儲存
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="text-xs px-2 py-0.5 border border-zinc-300 dark:border-zinc-700 rounded"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-green-700 dark:text-green-400 text-xs">
+            ✓ {broker?.name ?? "?"}{broker?.owner ? ` (${broker.owner})` : ""}
+          </span>
+          <button
+            onClick={() => {
+              setFee(tx.fee_usdt != null ? String(tx.fee_usdt) : "");
+              setNotes(tx.notes ?? "");
+              setEditing(true);
+            }}
+            className="text-xs text-blue-600 hover:underline"
+            title="補 / 改手續費"
+          >
+            ✎
+          </button>
+        </div>
+        {tx.fee_usdt != null && (
+          <span className="text-[11px] text-zinc-500">
+            手續費 {fmtUsdt(tx.fee_usdt)}
+          </span>
+        )}
+        {tx.notes && (
+          <span className="text-[11px] text-zinc-400 truncate max-w-[200px]">
+            {tx.notes}
+          </span>
+        )}
+      </div>
+    );
   }
 
   if (!open) {
@@ -98,11 +184,11 @@ function TagInline({
   }
 
   return (
-    <div className="flex gap-1">
+    <div className="flex flex-col gap-1 max-w-[220px]">
       <select
         value={selected}
         onChange={(e) => setSelected(e.target.value ? Number(e.target.value) : "")}
-        className="text-xs px-1 py-0.5 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded max-w-[180px]"
+        className="text-xs px-1 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
         autoFocus
       >
         <option value="">— 揀 broker —</option>
@@ -112,19 +198,36 @@ function TagInline({
           </option>
         ))}
       </select>
-      <button
-        onClick={() => selected && tag.mutate(Number(selected))}
-        disabled={!selected || tag.isPending}
-        className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded disabled:opacity-50"
-      >
-        ✓
-      </button>
-      <button
-        onClick={() => setOpen(false)}
-        className="text-xs px-2 py-0.5 border border-zinc-300 dark:border-zinc-700 rounded"
-      >
-        ×
-      </button>
+      <input
+        type="number"
+        step="0.01"
+        value={fee}
+        onChange={(e) => setFee(e.target.value)}
+        placeholder="手續費 USDT（知就填，可留空）"
+        className="text-xs px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
+      />
+      <input
+        type="text"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="備註（可留空）"
+        className="text-xs px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded"
+      />
+      <div className="flex gap-1">
+        <button
+          onClick={() => selected && tag.mutate(Number(selected))}
+          disabled={!selected || tag.isPending}
+          className="text-xs px-2 py-0.5 bg-emerald-600 text-white rounded disabled:opacity-50"
+        >
+          ✓ Tag
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          className="text-xs px-2 py-0.5 border border-zinc-300 dark:border-zinc-700 rounded"
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }

@@ -126,8 +126,20 @@ export default function ForexDashboardPage() {
             交易記錄
           </Link>
           <Link
+            href="/forex/private"
+            className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            私人組月結
+          </Link>
+          <Link
+            href="/forex/settlement"
+            className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            季度分潤
+          </Link>
+          <Link
             href="/forex/reconciliation"
-            className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
+            className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700"
           >
             月結對賬
           </Link>

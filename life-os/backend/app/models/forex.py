@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -30,6 +31,9 @@ class AccountGroup(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     owner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 分潤夥伴（e.g. Jackson）+ 佢分得嘅 % — 季度結算用
+    partner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    partner_split_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -112,6 +116,9 @@ class MonthlyBalance(Base):
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)  # "YYYY-MM"
     opening_balance: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     closing_balance: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    # 私人組手動入嘅 broker 側出入金（公司/A 組用 wallet tx 推算，呢兩欄留 0）
+    deposit_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    withdrawal_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     reported_pnl: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     expected_pnl: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     variance: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
@@ -148,6 +155,10 @@ class WalletTransaction(Base):
     block_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     direction: Mapped[str] = mapped_column(String(4), nullable=False)  # "in" / "out"
     amount_usdt: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
+    # 手續費（提款費 / 兌換差額）— 通常事後先知，可留空，之後人手補
+    fee_usdt: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # Free-text 備註（例如「Angel 月尾報數」）
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     counterparty_address: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     broker_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("forex_broker_accounts.id", ondelete="SET NULL"),
@@ -212,6 +223,64 @@ class DepositIntent(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class ManualTransfer(Base):
+    """人手出入金（銀行匯款 / 其他非鏈上方式）。月度出金/入金 = Σ呢啲 + Σ tagged wallet tx。"""
+
+    __tablename__ = "forex_manual_transfers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("forex_account_groups.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    broker_account_id: Mapped[int] = mapped_column(
+        ForeignKey("forex_broker_accounts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    flow: Mapped[str] = mapped_column(String(12), nullable=False)  # withdrawal / deposit
+    method: Mapped[str] = mapped_column(String(30), nullable=False, default="bank")
+    amount_usdt: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    transfer_date: Mapped[Date] = mapped_column(Date, nullable=False, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class QuarterlySettlement(Base):
+    """一季同夥伴（e.g. Jackson）50/50 分潤結算 + carry-forward。"""
+
+    __tablename__ = "forex_quarterly_settlements"
+    __table_args__ = (
+        UniqueConstraint("group_id", "quarter", name="uq_forex_settle_group_quarter"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("forex_account_groups.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    quarter: Mapped[str] = mapped_column(String(7), nullable=False, index=True)  # "2026-Q2"
+    gross_pnl: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    total_fees: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    net_pnl: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    carry_in: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    distributable: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    partner_split_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=50)
+    partner_share: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    paid_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    paid_tx_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    carry_out: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
 

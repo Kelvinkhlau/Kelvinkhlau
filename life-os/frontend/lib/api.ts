@@ -109,8 +109,8 @@ export type MutedSender = {
 };
 
 export type GmailStatus =
-  | { connected: false }
-  | { connected: true; email: string; name: string };
+  | { connected: false; healthy: false }
+  | { connected: true; healthy: boolean; email: string; name: string };
 
 export type SyncResult = {
   fetched: number;
@@ -131,6 +131,14 @@ export type EmailListResponse = {
   total: number;
 };
 
+export type TodoAttachment = {
+  id: number;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+};
+
 export type Todo = {
   id: number;
   title: string;
@@ -138,9 +146,11 @@ export type Todo = {
   priority: "low" | "medium" | "high";
   due_at: string | null;
   project_id: number | null;
+  sub_project_id: number | null;
   done: boolean;
   completed_at: string | null;
   source_email_id: number | null;
+  attachments: TodoAttachment[];
   created_at: string;
   updated_at: string;
 };
@@ -151,6 +161,7 @@ export type TodoCreate = {
   priority?: "low" | "medium" | "high";
   due_at?: string | null;
   project_id?: number | null;
+  sub_project_id?: number | null;
 };
 
 export type TodoUpdate = Partial<TodoCreate> & { done?: boolean };
@@ -164,8 +175,10 @@ export type Project = {
   status: ProjectStatus;
   color: string | null;
   parent_id: number | null;
+  due_date: string | null;
   todo_count: number;
   done_count: number;
+  sub_project_count: number;
   created_at: string;
   updated_at: string;
 };
@@ -176,9 +189,34 @@ export type ProjectCreate = {
   status?: ProjectStatus;
   color?: string | null;
   parent_id?: number | null;
+  due_date?: string | null;
 };
 
 export type ProjectUpdate = Partial<ProjectCreate>;
+
+export type SubProject = {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  due_date: string | null;
+  order: number;
+  todo_count: number;
+  done_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SubProjectCreate = {
+  name: string;
+  description?: string | null;
+  status?: ProjectStatus;
+  due_date?: string | null;
+  order?: number;
+};
+
+export type SubProjectUpdate = Partial<SubProjectCreate>;
 
 export type Idea = {
   id: number;
@@ -581,6 +619,81 @@ export type BudgetCreate = {
 
 export type CashBalance = { currency: string; amount: number };
 export type HoldingBreakdown = { currency: string; market_value: number };
+
+export type StatementReconcileLine = {
+  date: string;
+  description: string;
+  merchant: string | null;
+  amount: number;
+  txn_type: string;
+  kind: string;
+  category: string | null;
+  subcategory: string | null;
+  action: "added" | "matched" | "skipped" | "transfer";
+  expense_id: number | null;
+  note: string | null;
+  counterparty: string | null;
+  to_name: string | null;
+  account_name: string | null;
+  currency: string | null;
+};
+
+export type StatementReconcileResult = {
+  statement_import_id: number | null;
+  account_id: number;
+  account_name: string;
+  period: string | null;
+  statement_date: string | null;
+  parsed: number;
+  matched: number;
+  added: number;
+  skipped: number;
+  transfers: number;
+  lines: StatementReconcileLine[];
+  balance_updates: { account_name: string; currency: string; balance: number }[];
+  needs_confirm: boolean;
+  confirm_message: string | null;
+  model: string | null;
+};
+
+export type StatementImportRecord = {
+  id: number;
+  bank_account_id: number | null;
+  filename: string | null;
+  period: string | null;
+  statement_date: string | null;
+  parsed_count: number;
+  matched_count: number;
+  added_count: number;
+  skipped_count: number;
+  created_at: string;
+};
+
+export type CategorySub = {
+  id: number;
+  kind: string;
+  name: string;
+  icon: string | null;
+  parent_id: number | null;
+  sort_order: number;
+};
+
+export type ApiCategoryGroup = {
+  id: number;
+  kind: string;
+  name: string;
+  icon: string | null;
+  sort_order: number;
+  subs: CategorySub[];
+};
+
+export type CategoryCreate = {
+  kind?: string;
+  name: string;
+  icon?: string | null;
+  parent_id?: number | null;
+  sort_order?: number;
+};
 
 export type BankAccount = {
   id: number;
@@ -1041,6 +1154,17 @@ export const api = {
   },
   syncSent: (limit = 50) =>
     request<SyncResult>(`/emails/sync-sent?limit=${limit}`, { method: "POST" }),
+  gmailBackfill: (after?: string) => {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+    return request<{ status: string; message: string }>(
+      `/emails/gmail/backfill${qs}`,
+      { method: "POST" },
+    );
+  },
+  gmailBackfillStatus: () =>
+    request<{ status: string; message: string }>(
+      "/emails/gmail/backfill/status",
+    ),
   learningStats: () =>
     request<{
       total_classified: number;
@@ -1149,11 +1273,13 @@ export const api = {
     }),
 
   // Todos
-  listTodos: (params?: { done?: boolean; project_id?: number }) => {
+  listTodos: (params?: { done?: boolean; project_id?: number; sub_project_id?: number }) => {
     const qs = new URLSearchParams();
     if (params?.done !== undefined) qs.set("done", String(params.done));
     if (params?.project_id !== undefined)
       qs.set("project_id", String(params.project_id));
+    if (params?.sub_project_id !== undefined)
+      qs.set("sub_project_id", String(params.sub_project_id));
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<Todo[]>(`/todos${suffix}`);
   },
@@ -1172,6 +1298,42 @@ export const api = {
   },
   decomposeTodo: (id: number) =>
     request<DecomposeResult>(`/todos/${id}/decompose`, { method: "POST" }),
+  uploadTodoAttachment: async (
+    todoId: number,
+    file: File,
+  ): Promise<TodoAttachment> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/todos/${todoId}/attachments`, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: "include",
+    });
+    if (!res.ok) throw new ApiError(res.status, await res.text());
+    return res.json();
+  },
+  todoAttachmentUrl: (todoId: number, attId: number): string =>
+    `${BASE}/todos/${todoId}/attachments/${attId}`,
+  fetchTodoAttachmentBlobUrl: async (
+    todoId: number,
+    attId: number,
+  ): Promise<string> => {
+    const res = await rawFetch(`/todos/${todoId}/attachments/${attId}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+  deleteTodoAttachment: async (
+    todoId: number,
+    attId: number,
+  ): Promise<void> => {
+    await rawFetch(`/todos/${todoId}/attachments/${attId}`, {
+      method: "DELETE",
+    });
+  },
 
   // Projects
   listProjects: (params?: { status?: ProjectStatus }) => {
@@ -1193,6 +1355,31 @@ export const api = {
     }),
   deleteProject: async (id: number): Promise<void> => {
     await rawFetch(`/projects/${id}`, { method: "DELETE" });
+  },
+
+  // Sub-projects
+  listSubProjects: (projectId: number, params?: { status?: ProjectStatus }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<SubProject[]>(
+      `/projects/${projectId}/sub-projects${suffix}`,
+    );
+  },
+  getSubProject: (id: number) =>
+    request<SubProject>(`/sub-projects/${id}`),
+  createSubProject: (projectId: number, payload: SubProjectCreate) =>
+    request<SubProject>(`/projects/${projectId}/sub-projects`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateSubProject: (id: number, payload: SubProjectUpdate) =>
+    request<SubProject>(`/sub-projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteSubProject: async (id: number): Promise<void> => {
+    await rawFetch(`/sub-projects/${id}`, { method: "DELETE" });
   },
 
   // Ideas
@@ -1601,6 +1788,41 @@ export const api = {
     }),
   deleteBankAccount: async (id: number): Promise<void> => {
     await rawFetch(`/bank-accounts/${id}`, { method: "DELETE" });
+  },
+
+  // 自訂分類（主／副）
+  listCustomCategories: (kind?: "expense" | "income") =>
+    request<ApiCategoryGroup[]>(`/categories${kind ? `?kind=${kind}` : ""}`),
+  createCustomCategory: (payload: CategoryCreate) =>
+    request<ApiCategoryGroup>("/categories", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateCustomCategory: (id: number, payload: Partial<CategoryCreate>) =>
+    request<ApiCategoryGroup>(`/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteCustomCategory: async (id: number): Promise<void> => {
+    await rawFetch(`/categories/${id}`, { method: "DELETE" });
+  },
+
+  // 月結單核對
+  importStatement: (file: File, accountId: number, dryRun = false, force = false) => {
+    const form = new FormData();
+    form.append("file", file);
+    const qs = new URLSearchParams({ account_id: String(accountId) });
+    if (dryRun) qs.set("dry_run", "true");
+    if (force) qs.set("force", "true");
+    return formRequest<StatementReconcileResult>(
+      `/statements/import?${qs}`,
+      form,
+    );
+  },
+  listStatementImports: () =>
+    request<StatementImportRecord[]>("/statements/imports"),
+  undoStatementImport: async (id: number): Promise<void> => {
+    await rawFetch(`/statements/imports/${id}`, { method: "DELETE" });
   },
 
   // Brokerage cash balances
@@ -2280,10 +2502,27 @@ export const api = {
     const suffix = qs.toString() ? `?${qs}` : "";
     return request<ForexTransaction[]>(`/forex/transactions${suffix}`);
   },
-  tagForexTransaction: (txId: number, brokerId: number, learnAddress = true) =>
+  tagForexTransaction: (
+    txId: number,
+    brokerId: number,
+    opts?: { learnAddress?: boolean; fee_usdt?: number | null; notes?: string | null },
+  ) =>
     request<ForexTransaction>(`/forex/transactions/${txId}/tag`, {
       method: "POST",
-      body: JSON.stringify({ broker_account_id: brokerId, learn_address: learnAddress }),
+      body: JSON.stringify({
+        broker_account_id: brokerId,
+        learn_address: opts?.learnAddress ?? true,
+        ...(opts && "fee_usdt" in opts ? { fee_usdt: opts.fee_usdt } : {}),
+        ...(opts && "notes" in opts ? { notes: opts.notes } : {}),
+      }),
+    }),
+  updateForexTransaction: (
+    txId: number,
+    payload: { fee_usdt?: number | null; notes?: string | null },
+  ) =>
+    request<ForexTransaction>(`/forex/transactions/${txId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
     }),
   forexDashboard: () => request<ForexDashboard>("/forex/dashboard"),
   reconcileForex: (groupId: number, month: string) =>
@@ -2310,6 +2549,75 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, await res.text());
     return (await res.json()) as ForexImportResult;
   },
+  getForexMonthly: (groupId: number, month: string) =>
+    request<ForexMonthlyView>(`/forex/groups/${groupId}/monthly/${month}`),
+  upsertForexMonthly: (
+    groupId: number,
+    month: string,
+    brokerId: number,
+    payload: {
+      opening_balance: number;
+      closing_balance: number;
+      notes?: string | null;
+    },
+  ) =>
+    request<ForexMonthlyView>(
+      `/forex/groups/${groupId}/monthly/${month}/brokers/${brokerId}`,
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
+  listForexTransfers: (groupId: number, brokerId: number, month: string) =>
+    request<ForexTransfer[]>(
+      `/forex/groups/${groupId}/brokers/${brokerId}/transfers?month=${month}`,
+    ),
+  createForexTransfer: (
+    groupId: number,
+    payload: {
+      broker_account_id: number;
+      flow: "withdrawal" | "deposit";
+      method: string;
+      amount_usdt: number;
+      transfer_date: string;
+      notes?: string | null;
+    },
+  ) =>
+    request<{ id: number }>(`/forex/groups/${groupId}/transfers`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteForexTransfer: async (groupId: number, transferId: number) => {
+    await rawFetch(`/forex/groups/${groupId}/transfers/${transferId}`, { method: "DELETE" });
+  },
+  listForexSettlements: (groupId: number) =>
+    request<ForexSettlement[]>(`/forex/groups/${groupId}/settlements`),
+  getForexSettlementPreview: (
+    groupId: number,
+    quarter: string,
+    opts?: { total_fees?: number; paid_amount?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts?.total_fees != null) qs.set("total_fees", String(opts.total_fees));
+    if (opts?.paid_amount != null) qs.set("paid_amount", String(opts.paid_amount));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<ForexSettlementPreview>(
+      `/forex/groups/${groupId}/settlement/${quarter}/preview${suffix}`,
+    );
+  },
+  saveForexSettlement: (
+    groupId: number,
+    quarter: string,
+    payload: {
+      total_fees?: number | null;
+      paid_amount: number;
+      paid_tx_hash?: string | null;
+      paid_at?: string | null;
+      notes?: string | null;
+      status?: "draft" | "settled";
+    },
+  ) =>
+    request<ForexSettlement>(`/forex/groups/${groupId}/settlement/${quarter}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };
 
 // ─── Forex types ──────────────────────────────────────────────────────────
@@ -2318,9 +2626,85 @@ export type ForexGroup = {
   name: string;
   code: string;
   owner_name: string | null;
+  partner_name: string | null;
+  partner_split_pct: number | null;
   notes: string | null;
   is_active: boolean;
   created_at: string;
+};
+
+export type ForexMonthlyRow = {
+  broker_id: number;
+  broker_name: string;
+  owner: string | null;
+  account_number: string | null;
+  opening: number;
+  closing: number;
+  deposit: number;
+  withdrawal: number;
+  pnl: number;
+  has_data: boolean;
+  notes: string | null;
+};
+
+export type ForexMonthlyView = {
+  group_id: number;
+  month: string;
+  rows: ForexMonthlyRow[];
+  totals: {
+    opening: number;
+    closing: number;
+    deposit: number;
+    withdrawal: number;
+    pnl: number;
+  };
+};
+
+export type ForexTransfer = {
+  id: number;
+  source: "manual" | "wallet";
+  flow: "withdrawal" | "deposit";
+  method: string;
+  amount: number;
+  date: string;
+  notes: string | null;
+};
+
+export type ForexSettlementPreview = {
+  group_id: number;
+  quarter: string;
+  months: string[];
+  partner_name: string | null;
+  partner_split_pct: number;
+  gross_pnl: number;
+  total_fees: number;
+  fees_auto: boolean;
+  net_pnl: number;
+  carry_in: number;
+  distributable: number;
+  partner_share: number;
+  paid_amount: number;
+  carry_out: number;
+};
+
+export type ForexSettlement = {
+  id: number;
+  group_id: number;
+  quarter: string;
+  gross_pnl: number;
+  total_fees: number;
+  net_pnl: number;
+  carry_in: number;
+  distributable: number;
+  partner_split_pct: number;
+  partner_share: number;
+  paid_amount: number;
+  paid_tx_hash: string | null;
+  paid_at: string | null;
+  carry_out: number;
+  status: "draft" | "settled";
+  notes: string | null;
+  updated_at: string;
 };
 
 export type ForexWallet = {
@@ -2351,6 +2735,8 @@ export type ForexTransaction = {
   block_timestamp: string;
   direction: "in" | "out";
   amount_usdt: number;
+  fee_usdt: number | null;
+  notes: string | null;
   counterparty_address: string;
   broker_account_id: number | null;
   status: "pending_tag" | "tagged" | "ignored" | "internal_transfer";

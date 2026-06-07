@@ -110,7 +110,7 @@ export default function ForexReconciliationPage() {
         <button
           onClick={() => reconcile.mutate()}
           disabled={!groupId || !month || reconcile.isPending}
-          className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
         >
           {reconcile.isPending ? "跑緊…" : "跑對賬"}
         </button>
