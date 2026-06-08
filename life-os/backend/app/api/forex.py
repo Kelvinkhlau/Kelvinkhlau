@@ -21,6 +21,7 @@ from app.models.forex import (
     AddressBookEntry,
     BrokerAccount,
     ManualTransfer,
+    MonthLock,
     MonthlyBalance,
     QuarterlySettlement,
     ReconciliationRun,
@@ -360,6 +361,12 @@ def _pnl(opening: float, closing: float, deposit: float, withdrawal: float) -> f
     return closing - opening - deposit + withdrawal
 
 
+def _is_locked(db, group_id: int, month: str) -> bool:
+    return db.execute(
+        select(MonthLock.id).where(MonthLock.group_id == group_id, MonthLock.month == month)
+    ).scalar_one_or_none() is not None
+
+
 @router.get("/groups/{group_id}/monthly/{month}", response_model=MonthlyView)
 async def get_monthly(group_id: int, month: str, db: DbSession) -> MonthlyView:
     """每個 active broker 一行：有 row 用 row，冇就 opening 帶上月 closing。計埋 P/L + totals。"""
@@ -435,8 +442,30 @@ async def get_monthly(group_id: int, month: str, db: DbSession) -> MonthlyView:
     ).scalar() or 0
 
     return MonthlyView(
-        group_id=group_id, month=month, rows=rows, totals=tot, untagged_wallet=int(untagged)
+        group_id=group_id, month=month, rows=rows, totals=tot,
+        untagged_wallet=int(untagged), locked=_is_locked(db, group_id, month),
     )
+
+
+@router.post("/groups/{group_id}/monthly/{month}/lock", status_code=204)
+async def lock_month(group_id: int, month: str, db: DbSession) -> None:
+    """鎖定該月（防誤改）。"""
+    if db.get(AccountGroup, group_id) is None:
+        raise HTTPException(404, "Group not found")
+    if not _is_locked(db, group_id, month):
+        db.add(MonthLock(group_id=group_id, month=month))
+        db.commit()
+
+
+@router.delete("/groups/{group_id}/monthly/{month}/lock", status_code=204)
+async def unlock_month(group_id: int, month: str, db: DbSession) -> None:
+    """解鎖該月。"""
+    row = db.execute(
+        select(MonthLock).where(MonthLock.group_id == group_id, MonthLock.month == month)
+    ).scalar_one_or_none()
+    if row is not None:
+        db.delete(row)
+        db.commit()
 
 
 @router.put(
@@ -450,6 +479,8 @@ async def upsert_monthly(
     broker = db.get(BrokerAccount, broker_id)
     if broker is None or broker.group_id != group_id:
         raise HTTPException(404, "Broker not found in this group")
+    if _is_locked(db, group_id, month):
+        raise HTTPException(409, f"{month} 已鎖定，請先解鎖")
 
     withdrawal, deposit = forex_flows.month_flows(db, broker_id, month)
     pnl = _pnl(payload.opening_balance, payload.closing_balance, deposit, withdrawal)
@@ -485,6 +516,14 @@ async def list_broker_transfers(
     return forex_flows.list_transfers(db, broker_id, month)
 
 
+@router.get("/groups/{group_id}/transfers")
+async def list_group_transfers(group_id: int, month: str, db: DbSession) -> list[dict]:
+    """成個 group 一個月嘅出入金明細（連 broker 資料）— 報告用。"""
+    if db.get(AccountGroup, group_id) is None:
+        raise HTTPException(404, "Group not found")
+    return forex_flows.list_group_transfers(db, group_id, month)
+
+
 @router.post("/groups/{group_id}/transfers", status_code=201)
 async def create_transfer(
     group_id: int, payload: TransferCreate, db: DbSession
@@ -493,6 +532,9 @@ async def create_transfer(
     broker = db.get(BrokerAccount, payload.broker_account_id)
     if broker is None or broker.group_id != group_id:
         raise HTTPException(400, "Broker not found or belongs to a different group")
+    xfer_month = payload.transfer_date.strftime("%Y-%m")
+    if _is_locked(db, group_id, xfer_month):
+        raise HTTPException(409, f"{xfer_month} 已鎖定，請先解鎖")
     t = ManualTransfer(
         group_id=group_id,
         broker_account_id=payload.broker_account_id,

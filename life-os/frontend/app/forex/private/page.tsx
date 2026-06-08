@@ -172,6 +172,19 @@ export default function ForexPrivateMonthlyPage() {
     onError: (e) => toast.error(`同步失敗：${String(e)}`),
   });
 
+  const locked = !!view.data?.locked;
+  const toggleLock = useMutation({
+    mutationFn: () =>
+      locked
+        ? api.unlockForexMonth(Number(resolvedGroupId), month)
+        : api.lockForexMonth(Number(resolvedGroupId), month),
+    onSuccess: () => {
+      toast.success(locked ? "已解鎖" : "已鎖定");
+      qc.invalidateQueries({ queryKey: ["forex-monthly"] });
+    },
+    onError: (e) => toast.error(`操作失敗：${String(e)}`),
+  });
+
   const fileRef = useRef<HTMLInputElement>(null);
   const importImg = useMutation({
     mutationFn: (file: File) => api.importForexBalancesImage(Number(resolvedGroupId), file),
@@ -239,7 +252,7 @@ export default function ForexPrivateMonthlyPage() {
             className="px-2 py-1.5 text-sm border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded-r hover:bg-zinc-100 dark:hover:bg-zinc-800">›</button>
         </div>
 
-        <button onClick={() => saveAll.mutate()} disabled={saveAll.isPending || !resolvedGroupId}
+        <button onClick={() => saveAll.mutate()} disabled={saveAll.isPending || !resolvedGroupId || locked}
           className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
           {saveAll.isPending ? "儲存緊…" : "💾 全部儲存"}
         </button>
@@ -247,7 +260,7 @@ export default function ForexPrivateMonthlyPage() {
           className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">
           ➕ 新增戶口
         </button>
-        <button onClick={() => setShowXfer(true)} disabled={!resolvedGroupId}
+        <button onClick={() => setShowXfer(true)} disabled={!resolvedGroupId || locked}
           className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50">
           💵 新增交易
         </button>
@@ -257,7 +270,7 @@ export default function ForexPrivateMonthlyPage() {
             if (f && resolvedGroupId) importImg.mutate(f);
             if (fileRef.current) fileRef.current.value = "";
           }} />
-        <button onClick={() => fileRef.current?.click()} disabled={!resolvedGroupId || importImg.isPending}
+        <button onClick={() => fileRef.current?.click()} disabled={!resolvedGroupId || importImg.isPending || locked}
           className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50">
           {importImg.isPending ? "讀緊圖…" : "📷 Import 圖片"}
         </button>
@@ -266,7 +279,23 @@ export default function ForexPrivateMonthlyPage() {
           title="即刻抓最新鏈上交易">
           {syncWallets.isPending ? "同步緊…" : "🔄 同步錢包"}
         </button>
+        <Link href={`/forex/report?group_id=${resolvedGroupId}&month=${month}`}
+          className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          📄 報告 / PDF
+        </Link>
+        <button onClick={() => toggleLock.mutate()} disabled={toggleLock.isPending || !resolvedGroupId}
+          className={`px-3 py-1.5 text-sm rounded disabled:opacity-50 ${locked
+            ? "bg-amber-500 text-white hover:bg-amber-600"
+            : "border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}>
+          {locked ? "🔓 解鎖" : "🔒 鎖定"}
+        </button>
       </div>
+
+      {locked && (
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-sm">
+          🔒 <b>{month}</b> 已鎖定，輸入格唔改得（防誤觸）。要改撳「🔓 解鎖」。
+        </div>
+      )}
 
       {showAdd && (
         <div className="flex flex-wrap gap-2 items-center mb-4 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
@@ -337,13 +366,13 @@ export default function ForexPrivateMonthlyPage() {
                         <td className="px-3 py-2 text-xs text-zinc-500">{r.owner ?? "—"}</td>
                         <td className="px-3 py-2 font-medium">{r.broker_name}</td>
                         <td className="px-2 py-1 text-right">
-                          <input className={cellInput} inputMode="decimal" value={d.opening}
+                          <input className={cellInput} inputMode="decimal" value={d.opening} disabled={locked}
                             onChange={(e) => setField(r.broker_id, "opening", e.target.value)} />
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-zinc-500">{fmtUsdt(r.withdrawal)}</td>
                         <td className="px-3 py-2 text-right font-mono text-zinc-500">{fmtUsdt(r.deposit)}</td>
                         <td className="px-2 py-1 text-right">
-                          <input className={cellInput} inputMode="decimal" placeholder="—" value={d.closing}
+                          <input className={cellInput} inputMode="decimal" placeholder="—" value={d.closing} disabled={locked}
                             onChange={(e) => setField(r.broker_id, "closing", e.target.value)} />
                         </td>
                         <td className={`px-3 py-2 text-right font-mono ${calc.closingEmpty ? "text-zinc-400" : calc.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -353,7 +382,7 @@ export default function ForexPrivateMonthlyPage() {
                           {calc.closingEmpty ? "—" : pctStr(calc.pnl, calc.o)}
                         </td>
                         <td className="px-2 py-1 whitespace-nowrap">
-                          <button onClick={() => saveOne.mutate(r.broker_id)} disabled={saveOne.isPending}
+                          <button onClick={() => saveOne.mutate(r.broker_id)} disabled={saveOne.isPending || locked}
                             className="px-2.5 py-1 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">儲存</button>
                           <button onClick={() => toggleExpand(r.broker_id)} title="出入金明細"
                             className="ml-1 px-1.5 py-1 text-xs rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">

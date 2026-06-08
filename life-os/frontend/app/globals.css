@@ -23,56 +23,56 @@
        - Shadows: 極 subtle，淺淺 floating feel
        ═══════════════════════════════════════════════════════════════ */
 
-    /* ─── Surfaces (cool blue-grey scale) ───────────────────────── */
-    --background: 215 30% 97%;           /* #F4F6F9 — page */
+    /* ─── Surfaces (Donezo：淺灰托白) ───────────────────────────── */
+    --background: 220 8% 92%;            /* #EAEBED — app bg 淺灰 */
     --surface: 0 0% 100%;                /* #FFFFFF — cards */
     --surface-elevated: 0 0% 100%;       /* popover same as card */
     --overlay: 0 0% 100%;
 
-    /* Shadow tint — cool slate */
-    --shadow-color: 215 25% 50%;
+    /* Shadow tint — 帶少少綠調（Donezo spec） */
+    --shadow-color: 158 45% 14%;
     --highlight-color: 0 0% 100%;
 
-    /* ─── Text hierarchy ────────────────────────────────────────── */
-    --foreground: 222 47% 11%;           /* #0F172A — deep navy ink */
-    --foreground-muted: 215 20% 45%;     /* #5B6B7F */
-    --foreground-subtle: 215 15% 65%;    /* #9AA5B4 */
-    --muted-foreground: 215 20% 45%;
+    /* ─── Text hierarchy（Donezo neutrals） ─────────────────────── */
+    --foreground: 204 9% 11%;            /* #1A1D1F — 近黑主文字 */
+    --foreground-muted: 210 5% 44%;      /* #6B7177 — 次文字 */
+    --foreground-subtle: 216 5% 63%;     /* #9CA0A6 — placeholder 灰 */
+    --muted-foreground: 210 5% 44%;
 
     /* ─── Muted surface ─────────────────────────────────────────── */
-    --muted: 215 25% 94%;                /* #ECEFF4 — pressed / hover */
+    --muted: 210 10% 96%;                /* #F4F5F6 — pressed / hover / search */
 
     /* ─── Borders (極淺 hairline) ───────────────────────────────── */
-    --border: 215 25% 90%;
-    --border-subtle: 215 28% 94%;
-    --border-strong: 215 22% 82%;
+    --border: 210 6% 94%;                /* #EEEFF0 */
+    --border-subtle: 210 6% 94%;
+    --border-strong: 216 5% 82%;
 
-    /* ─── Primary ───────────────────────────────────────────────── */
-    --primary: 222 47% 11%;              /* deep navy */
+    /* ─── Primary（Donezo brand green #1F8A4C） ─────────────────── */
+    --primary: 145 63% 33%;
     --primary-foreground: 0 0% 100%;
 
-    /* ─── Accent：deep navy（selected / today） ──────────────────── */
-    --accent: 222 47% 11%;               /* #0F172A */
-    --accent-soft: 215 30% 94%;          /* very light fill */
-    --accent-strong: 222 60% 6%;
+    /* ─── Accent：brand green（Donezo style） ───────────────────── */
+    --accent: 145 63% 33%;               /* #1F8A4C */
+    --accent-soft: 140 37% 84%;          /* #C8E6D2 — pale green chip 底 */
+    --accent-strong: 146 65% 29%;        /* #1A7A43 — hover */
     --accent-foreground: 0 0% 100%;
 
-    /* ─── Success ───────────────────────────────────────────────── */
-    --success: 152 50% 40%;              /* #339966 */
-    --success-soft: 150 40% 94%;
-    --success-strong: 152 55% 30%;
+    /* ─── Success（= brand green，soft chip） ───────────────────── */
+    --success: 145 63% 33%;              /* #1F8A4C */
+    --success-soft: 145 35% 93%;         /* #E8F4ED */
+    --success-strong: 146 65% 29%;
     --success-foreground: 0 0% 100%;
 
-    /* ─── Warning ───────────────────────────────────────────────── */
-    --warning: 32 90% 52%;               /* #F59E0B */
-    --warning-soft: 38 95% 94%;
-    --warning-strong: 28 80% 40%;
+    /* ─── Warning（Donezo in-progress 橙） ──────────────────────── */
+    --warning: 36 79% 57%;               /* #E8A33D */
+    --warning-soft: 37 76% 93%;          /* #FBF1E1 */
+    --warning-strong: 32 70% 42%;
     --warning-foreground: 30 30% 10%;
 
-    /* ─── Danger ────────────────────────────────────────────────── */
-    --danger: 0 72% 50%;                 /* #DC2626 */
-    --danger-soft: 0 85% 95%;
-    --danger-strong: 0 70% 40%;
+    /* ─── Danger（Donezo pending 紅） ───────────────────────────── */
+    --danger: 0 73% 67%;                 /* #E86C6C */
+    --danger-soft: 0 69% 95%;            /* #FBE9E9 */
+    --danger-strong: 0 60% 50%;
     --danger-foreground: 0 0% 100%;
 
     /* ─── Info ──────────────────────────────────────────────────── */
@@ -175,13 +175,13 @@
     --border-subtle: 222 20% 16%;
     --border-strong: 222 15% 30%;
 
-    --primary: 215 20% 94%;
+    --primary: 152 60% 45%;              /* brighter emerald for dark mode */
     --primary-foreground: 222 47% 11%;
 
-    --accent: 215 20% 94%;               /* inverted: light 喺 dark */
-    --accent-soft: 222 18% 20%;
-    --accent-strong: 0 0% 100%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 152 60% 45%;               /* emerald — visible on dark bg */
+    --accent-soft: 158 30% 18%;          /* dark green tinted bg */
+    --accent-strong: 152 70% 35%;
+    --accent-foreground: 0 0% 100%;
 
     --success: 152 45% 55%;
     --success-soft: 152 30% 20%;
@@ -258,8 +258,9 @@
 @layer base {
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
-      "PingFang TC", "Microsoft JhengHei", sans-serif;
+    font-family: var(--font-jakarta), "Noto Sans HK", "PingFang HK",
+      "PingFang TC", "Microsoft JhengHei", -apple-system, BlinkMacSystemFont,
+      sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -521,6 +522,36 @@
 
 .animate-scale-in {
   animation: scale-in 0.15s ease-out;
+}
+
+/* Print：淨係印 .print-report，隱藏 app 側欄/chrome */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-report,
+  .print-report * {
+    visibility: visible;
+  }
+  .print-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: #18181b !important;
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  tr {
+    break-inside: avoid;
+  }
+  .avoid-break {
+    break-inside: avoid;
+  }
 }
 
 /* Respect prefers-reduced-motion */

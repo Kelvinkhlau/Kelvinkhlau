@@ -2585,6 +2585,12 @@ export const api = {
       `/forex/groups/${groupId}/brokers/${brokerId}/credentials`,
       { method: "PUT", body: JSON.stringify(payload) },
     ),
+  lockForexMonth: async (groupId: number, month: string) => {
+    await rawFetch(`/forex/groups/${groupId}/monthly/${month}/lock`, { method: "POST" });
+  },
+  unlockForexMonth: async (groupId: number, month: string) => {
+    await rawFetch(`/forex/groups/${groupId}/monthly/${month}/lock`, { method: "DELETE" });
+  },
   syncForexWallets: (lookbackDays = 7) =>
     request<{ total_new: number; per_wallet: Record<string, number> }>(
       `/forex/sync-wallets?lookback_days=${lookbackDays}`,
@@ -2606,6 +2612,8 @@ export const api = {
     request<ForexTransfer[]>(
       `/forex/groups/${groupId}/brokers/${brokerId}/transfers?month=${month}`,
     ),
+  listForexGroupTransfers: (groupId: number, month: string) =>
+    request<ForexGroupTransfer[]>(`/forex/groups/${groupId}/transfers?month=${month}`),
   createForexTransfer: (
     groupId: number,
     payload: {
@@ -2696,6 +2704,7 @@ export type ForexMonthlyView = {
     pnl: number;
   };
   untagged_wallet: number;
+  locked: boolean;
 };
 
 export type ForexBrokerCredentials = {
@@ -2730,6 +2739,12 @@ export type ForexTransfer = {
   amount: number;
   date: string;
   notes: string | null;
+};
+
+export type ForexGroupTransfer = ForexTransfer & {
+  broker_id: number;
+  broker_name: string;
+  owner: string | null;
 };
 
 export type ForexSettlementPreview = {

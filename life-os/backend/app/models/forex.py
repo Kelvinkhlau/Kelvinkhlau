@@ -252,6 +252,24 @@ class ManualTransfer(Base):
     )
 
 
+class MonthLock(Base):
+    """按月鎖定（對數完防誤改）。有 row = 鎖咗。"""
+
+    __tablename__ = "forex_month_locks"
+    __table_args__ = (
+        UniqueConstraint("group_id", "month", name="uq_forex_lock_group_month"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("forex_account_groups.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    month: Mapped[str] = mapped_column(String(7), nullable=False)
+    locked_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
 class QuarterlySettlement(Base):
     """一季同夥伴（e.g. Jackson）50/50 分潤結算 + carry-forward。"""
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -255,6 +255,16 @@ export default function ForexTransactionsPage() {
   const [directionFilter, setDirectionFilter] = useState<"" | "in" | "out">("");
   const [monthFilter, setMonthFilter] = useState<string>(() => readParam("month"));
   const qc = useQueryClient();
+
+  // 靜態匯出 + client 導航下，lazy init 可能讀唔到 URL → 載入後正式讀返一次
+  useEffect(() => {
+    const g = readParam("group_id");
+    if (g) setGroupFilter(Number(g));
+    const s = readParam("status");
+    if (s) setStatusFilter(s as "" | "pending_tag" | "tagged" | "internal_transfer");
+    const m = readParam("month");
+    if (m) setMonthFilter(m);
+  }, []);
 
   const sync = useMutation({
     mutationFn: () => api.syncForexWallets(7),

@@ -18,7 +18,7 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.forex import ManualTransfer, WalletTransaction
+from app.models.forex import BrokerAccount, ManualTransfer, WalletTransaction
 
 # 6 月起先自動接錢包 tagged 交易（之前手動）
 AUTO_FROM_MONTH = "2026-06"
@@ -116,4 +116,22 @@ def list_transfers(db: Session, broker_id: int, month: str) -> list[dict]:
             })
 
     out.sort(key=lambda r: r["date"])
+    return out
+
+
+def list_group_transfers(db: Session, group_id: int, month: str) -> list[dict]:
+    """成個 group 一個月嘅出入金明細（連 broker 資料），畀報告用。"""
+    brokers = db.execute(
+        select(BrokerAccount).where(BrokerAccount.group_id == group_id)
+    ).scalars().all()
+    out: list[dict] = []
+    for b in brokers:
+        for t in list_transfers(db, b.id, month):
+            out.append({
+                "broker_id": b.id,
+                "broker_name": b.name,
+                "owner": b.owner,
+                **t,
+            })
+    out.sort(key=lambda r: (r["owner"] or "", r["broker_name"], r["date"]))
     return out
